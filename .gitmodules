@@ -1,0 +1,12 @@
+[submodule "kubeless"]
+	path = kubeless
+	url = git@github.com:kontainapp/kubeless.git
+[submodule "runtimes"]
+	path = runtimes
+	url = git@github.com:kontainapp/runtimes.git
+[submodule "http-trigger"]
+	path = http-trigger
+	url = git@github.com:kontainapp/http-trigger.git
+[submodule "cronjob-trigger"]
+	path = cronjob-trigger
+	url = git@github.com:kontainapp/cronjob-trigger.git
