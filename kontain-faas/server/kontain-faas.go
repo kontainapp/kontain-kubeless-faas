@@ -14,6 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+/*
+Design Notes 2/23/2020 (function data passing):
+- Input and output for a function is passed in regular files.
+- The names of these files is passed as arguments to KRUN and in turn to KM.
+- The function kontainer 'main' is snapshot aware and uses new KM hypercalls to get
+  parameters and return results.
+*/
+
 package main
 
 import (
