@@ -26,14 +26,16 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"sync"
 
 	proxyUtils "github.com/kubeless/kubeless/pkg/function-proxy/utils"
 	"github.com/kubeless/kubeless/pkg/functions"
 )
+
+var faas_mutex = &sync.Mutex{}
 
 var (
 	funcContext functions.Context
@@ -56,9 +58,35 @@ func health(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
-func hello_world(e functions.Event, f functions.Context) (string, error) {
-	fmt.Println("returning Hello World!")
-	return "Hello World!", nil
+func write_request(faas_name string, e functions.Event) error {
+	data := []byte("empty") // no data for GET, only GET for now
+	url := e.Extensions.Request.URL.String()
+	return ApiHandlerWriteRequest(faas_name, e.Extensions.Request.Method, url, e.Extensions.Request.Header, data)
+}
+
+func read_response(faas_name string, e functions.Event) (int, []byte, error) {
+	code, res, err := ApiHandlerReadResponse(faas_name)
+	return code, res, err
+}
+
+func process_request(event functions.Event) (int, []byte, error) {
+	faas_mutex.Lock()
+	defer faas_mutex.Unlock()
+
+	url_string := event.Extensions.Request.URL.String()
+	faas_name, err := GetCallFunction(url_string)
+	if err != nil {
+		return http.StatusNotFound, []byte(""), err
+	}
+	err = write_request(faas_name, event)
+	if err != nil {
+		return http.StatusInternalServerError, []byte(""), err
+	}
+	err = ApiHandlerExecCallFunction(faas_name)
+	if err != nil {
+		return http.StatusInternalServerError, []byte(""), err
+	}
+	return read_response(faas_name, event)
 }
 
 func handle(ctx context.Context, w http.ResponseWriter, r *http.Request) ([]byte, error) {
@@ -78,7 +106,10 @@ func handle(ctx context.Context, w http.ResponseWriter, r *http.Request) ([]byte
 			Context:  ctx,
 		},
 	}
-	res, err := hello_world(event, funcContext)
+
+	code, res, err := process_request(event)
+
+	w.WriteHeader(code)
 	return []byte(res), err
 }
 
