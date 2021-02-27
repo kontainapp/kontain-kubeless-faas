@@ -1,0 +1,20 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kontain-faas-server
+  namespace: kontain
+spec:
+  selector:
+    matchLabels:
+      kontain: faas-server
+  template:
+    metadata:
+      labels:
+        kontain: faas-server
+    spec:
+      containers:
+      - env:
+        image: kontain-faas-server:latest
+        imagePullPolicy: IfNotPresent
+        name: kontain-faas-server
