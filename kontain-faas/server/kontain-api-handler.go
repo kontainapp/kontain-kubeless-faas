@@ -42,7 +42,9 @@ func GetCallFunction(url string) (string, error) {
 
 func ApiHandlerExecCallFunction(faasName string) error {
 	fp := execFileName(faasName)
-	execCmd := exec.Command(fp)
+	rq := requestFileName(faasName)
+	rp := responseFileName(faasName)
+	execCmd := exec.Command(fp, rq, rp)
 	err := execCmd.Run()
 	return err
 }

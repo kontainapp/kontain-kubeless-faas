@@ -20,3 +20,7 @@ RUN mkdir /lib64 && ln -s /lib/libc.musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2
 COPY kontain-faas-server /	
 
 ENTRYPOINT [ "/kontain-faas-server" ]
+
+# Temporary. Hard-code a function in the file system
+RUN mkdir /kontain
+COPY test_funcs/test_func1 /kontain
