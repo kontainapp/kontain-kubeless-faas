@@ -12,16 +12,16 @@ import (
 	"strings"
 )
 
-var path_name string = "/kontain/"
+var pathName string = "/kontain/"
 
-func request_file_name(faas_name string) string {
-	return path_name + "/" + faas_name + ".request"
+func requestFileName(faasName string) string {
+	return pathName + "/" + faasName + ".request"
 }
-func response_file_name(faas_name string) string {
-	return path_name + "/" + faas_name + ".response"
+func responseFileName(faasName string) string {
+	return pathName + "/" + faasName + ".response"
 }
-func exec_file_name(faas_name string) string {
-	return path_name + "/" + faas_name
+func execFileName(faasName string) string {
+	return pathName + "/" + faasName
 }
 
 func GetCallFunction(url string) (string, error) {
@@ -29,7 +29,7 @@ func GetCallFunction(url string) (string, error) {
 	if len(comp) == 0 {
 		return "", errors.New("Invalid URL")
 	}
-	fp := exec_file_name(comp[1])
+	fp := execFileName(comp[1])
 	finfo, err := os.Stat(fp)
 	if err != nil {
 		return comp[1], err
@@ -40,16 +40,16 @@ func GetCallFunction(url string) (string, error) {
 	return comp[1], nil
 }
 
-func ApiHandlerExecCallFunction(faas_name string) error {
-	fp := exec_file_name(faas_name)
-	exec_cmd := exec.Command(fp)
-	err := exec_cmd.Run()
+func ApiHandlerExecCallFunction(faasName string) error {
+	fp := execFileName(faasName)
+	execCmd := exec.Command(fp)
+	err := execCmd.Run()
 	return err
 }
 
-func ApiHandlerWriteRequest(faas_name string, method string, url string, header http.Header, data []byte) error {
-	fn := request_file_name(faas_name)
-	fd, err := os.OpenFile(fn, os.O_RDWR|os.O_CREATE, 0777)
+func ApiHandlerWriteRequest(faasName string, method string, url string, header http.Header, data string) error {
+	fn := requestFileName(faasName)
+	fd, err := os.OpenFile(fn, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0777)
 	if err != nil {
 		return err
 	}
@@ -67,21 +67,21 @@ func ApiHandlerWriteRequest(faas_name string, method string, url string, header 
 		fmt.Fprintf(fd, "\n")
 	}
 
-	fmt.Fprintf(fd, "DATA: %s\n", base64.StdEncoding.EncodeToString(data))
+	fmt.Fprintf(fd, "DATA: %s\n", base64.StdEncoding.EncodeToString([]byte(data)))
 
 	return nil
 }
 
-func ApiHandlerReadRequest(faas_name string) (string, string, []byte, error) {
+func ApiHandlerReadRequest(faasName string) (string, string, []byte, error) {
 	var method string
 	var url string
-	var dec_data []byte
+	var decData []byte
 	header := make(map[string][]string)
 
-	fn := request_file_name(faas_name)
+	fn := requestFileName(faasName)
 	fd, err := os.OpenFile(fn, os.O_RDWR|os.O_CREATE, 0777)
 	if err != nil {
-		return method, url, dec_data, err
+		return method, url, decData, err
 	}
 	defer fd.Close()
 
@@ -89,7 +89,7 @@ func ApiHandlerReadRequest(faas_name string) (string, string, []byte, error) {
 	for sc.Scan() {
 		comp := strings.Split(sc.Text(), ":")
 		if len(comp) != 2 {
-			return method, url, dec_data, errors.New("Corrupted input")
+			return method, url, decData, errors.New("Corrupted input")
 		}
 		comp1 := strings.TrimSpace(comp[0])
 		comp2 := strings.TrimSpace(comp[1])
@@ -97,62 +97,62 @@ func ApiHandlerReadRequest(faas_name string) (string, string, []byte, error) {
 		case "METHOD":
 			method = comp2
 		case "URL":
-			url_byte, err := base64.StdEncoding.DecodeString(comp2)
+			urlByte, err := base64.StdEncoding.DecodeString(comp2)
 			if err != nil {
-				return method, url, dec_data, err
+				return method, url, decData, err
 			}
-			url = string(url_byte)
+			url = string(urlByte)
 		case "HEADER":
 			hcomp := strings.Split(comp2, ",")
 			if len(hcomp) != 2 {
-				return method, url, dec_data, errors.New("Corrupted input in HEADER")
+				return method, url, decData, errors.New("Corrupted input in HEADER")
 			}
 			var k string
 			var v []string
 			for i, j := range hcomp {
-				j_dec, err := base64.StdEncoding.DecodeString(strings.TrimSpace(j))
+				jDec, err := base64.StdEncoding.DecodeString(strings.TrimSpace(j))
 				if err != nil {
-					return method, url, dec_data, err
+					return method, url, decData, err
 				}
 				if i == 0 {
-					k = string(j_dec)
+					k = string(jDec)
 				} else {
-					v = append(v, string(j_dec))
+					v = append(v, string(jDec))
 				}
 			}
 			header[k] = v
 		case "DATA":
-			dec_data, err = base64.StdEncoding.DecodeString(comp2)
+			decData, err = base64.StdEncoding.DecodeString(comp2)
 			if err != nil {
-				return method, url, dec_data, err
+				return method, url, decData, err
 			}
 		}
 	}
-	return method, url, dec_data, nil
+	return method, url, decData, nil
 }
 
-func ApiHandlerWriteResponse(faas_name string, status_code int, data []byte) error {
-	fn := response_file_name(faas_name)
-	fd, err := os.OpenFile(fn, os.O_RDWR|os.O_CREATE, 0777)
+func ApiHandlerWriteResponse(faasName string, statusCode int, data []byte) error {
+	fn := responseFileName(faasName)
+	fd, err := os.OpenFile(fn, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0777)
 	if err != nil {
 		return err
 	}
 	defer fd.Close()
 
-	fmt.Fprintf(fd, "STATUSCODE: %d\n", http.StatusOK)
+	fmt.Fprintf(fd, "STATUSCODE: %d\n", statusCode)
 	fmt.Fprintf(fd, "DATA: %s\n", base64.StdEncoding.EncodeToString(data))
 
 	return nil
 }
 
-func ApiHandlerReadResponse(faas_name string) (int, []byte, error) {
+func ApiHandlerReadResponse(faasName string) (int, []byte, error) {
 	code := http.StatusNotFound
-	dec_data := []byte("")
+	decData := []byte("")
 
-	fn := response_file_name(faas_name)
+	fn := responseFileName(faasName)
 	fd, err := os.OpenFile(fn, os.O_RDONLY, 0)
 	if err != nil {
-		return code, dec_data, err
+		return code, decData, err
 	}
 	defer fd.Close()
 
@@ -163,11 +163,17 @@ func ApiHandlerReadResponse(faas_name string) (int, []byte, error) {
 		comp2 := strings.TrimSpace(comp[1])
 		switch comp1 {
 		case "STATUSCODE":
-			code, _ = strconv.Atoi(strings.TrimSpace(comp2))
+			code, err = strconv.Atoi(strings.TrimSpace(comp2))
+			if err != nil {
+				return code, decData, err
+			}
 		case "DATA":
-			dec_data, _ = base64.StdEncoding.DecodeString(comp2)
+			decData, err = base64.StdEncoding.DecodeString(comp2)
+			if err != nil {
+				return code, decData, err
+			}
 		}
 	}
 
-	return code, dec_data, nil
+	return code, decData, nil
 }

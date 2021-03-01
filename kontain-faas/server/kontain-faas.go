@@ -35,7 +35,7 @@ import (
 	"github.com/kubeless/kubeless/pkg/functions"
 )
 
-var faas_mutex = &sync.Mutex{}
+var faasMutex = &sync.Mutex{}
 
 var (
 	funcContext functions.Context
@@ -58,35 +58,34 @@ func health(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
-func write_request(faas_name string, e functions.Event) error {
-	data := []byte("empty") // no data for GET, only GET for now
+func writeRequest(faasName string, e functions.Event) error {
 	url := e.Extensions.Request.URL.String()
-	return ApiHandlerWriteRequest(faas_name, e.Extensions.Request.Method, url, e.Extensions.Request.Header, data)
+	return ApiHandlerWriteRequest(faasName, e.Extensions.Request.Method, url, e.Extensions.Request.Header, e.Data)
 }
 
-func read_response(faas_name string, e functions.Event) (int, []byte, error) {
-	code, res, err := ApiHandlerReadResponse(faas_name)
+func readResponse(faasName string, e functions.Event) (int, []byte, error) {
+	code, res, err := ApiHandlerReadResponse(faasName)
 	return code, res, err
 }
 
-func process_request(event functions.Event) (int, []byte, error) {
-	faas_mutex.Lock()
-	defer faas_mutex.Unlock()
+func processRequest(event functions.Event) (int, []byte, error) {
+	faasMutex.Lock()
+	defer faasMutex.Unlock()
 
-	url_string := event.Extensions.Request.URL.String()
-	faas_name, err := GetCallFunction(url_string)
+	urlString := event.Extensions.Request.URL.String()
+	faasName, err := GetCallFunction(urlString)
 	if err != nil {
 		return http.StatusNotFound, []byte(""), err
 	}
-	err = write_request(faas_name, event)
+	err = writeRequest(faasName, event)
 	if err != nil {
 		return http.StatusInternalServerError, []byte(""), err
 	}
-	err = ApiHandlerExecCallFunction(faas_name)
+	err = ApiHandlerExecCallFunction(faasName)
 	if err != nil {
 		return http.StatusInternalServerError, []byte(""), err
 	}
-	return read_response(faas_name, event)
+	return readResponse(faasName, event)
 }
 
 func handle(ctx context.Context, w http.ResponseWriter, r *http.Request) ([]byte, error) {
@@ -107,7 +106,7 @@ func handle(ctx context.Context, w http.ResponseWriter, r *http.Request) ([]byte
 		},
 	}
 
-	code, res, err := process_request(event)
+	code, res, err := processRequest(event)
 
 	w.WriteHeader(code)
 	return []byte(res), err
