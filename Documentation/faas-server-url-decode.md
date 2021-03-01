@@ -28,3 +28,7 @@ Place the function executable in /kontain director. Use curl or browser to acces
 >ex: curl -i -X GET http://127.0.0.1:8080/hello/GoodMorning
 
 in the above example __hello__ is the function name.
+
+>ex: curl -i -X POST 127.0.0.1:8080/hello/foobar -H "Content-Type: text/xml" --data-binary "@/kontain/text.txt"
+
+in the above example __hello__ is the function name and __/kontain/text.txt__ has data to be sent to function.
