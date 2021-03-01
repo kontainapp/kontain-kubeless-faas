@@ -3,7 +3,7 @@
 Information is passed between kontain faas server and function by using \<function\>.request and \<function\>.response.
 Request and response files are located in /kontain directory.
 
-Request and response files are in plain text. All information is passed as \<key\>: \<value\> pairs. key is always plain text.
+Request and response files are in plain text. All information is passed as \<key\>: \<value\> pairs. key is always plain text. One KV per line.
 
 ## Value encoding
 
