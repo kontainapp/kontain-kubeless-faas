@@ -10,12 +10,17 @@
 #
 # Create image with kontain Faas server
 
+ARG KM_RELEASE=v0.1-beta2-demo
+
 FROM alpine:3.7
 
 # Go programs compiled on linux expect the GLIBC dynamic loader.
 # Create a symlink so the musl synamic loader is used instead.
 # See https://stackoverflow.com/questions/34729748/installed-go-binary-not-found-in-path-on-alpine-linux-docker
 RUN mkdir /lib64 && ln -s /lib/libc.musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2
+
+# Install KM binaries and libraries locally.
+RUN mkdir -p /opt/kontain && wget https://github.com/kontainapp/km-releases/releases/download/${KM_RELEASE}/kontain.tar.gz --output-document - -q | tar -C /opt/kontain -xzf -
 
 COPY kontain-faas-server /	
 
