@@ -14,7 +14,9 @@ spec:
         kontain: faas-server
     spec:
       containers:
-      - env:
+      - name: kontain-faas-server
         image: kontain-faas-server:latest
         imagePullPolicy: IfNotPresent
-        name: kontain-faas-server
+        securityContext:
+          privileged: true
+
