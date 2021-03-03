@@ -12,10 +12,16 @@
 
 FROM alpine:3.7
 
+ARG KM_TAR
+
 # Go programs compiled on linux expect the GLIBC dynamic loader.
 # Create a symlink so the musl synamic loader is used instead.
 # See https://stackoverflow.com/questions/34729748/installed-go-binary-not-found-in-path-on-alpine-linux-docker
 RUN mkdir /lib64 && ln -s /lib/libc.musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2
+
+# Install KM binaries and libraries locally.
+COPY $KM_TAR /tmp/km.tgz
+RUN mkdir -p /opt/kontain && tar -C /opt/kontain -xzf /tmp/km.tgz && rm /tmp/km.tgz
 
 COPY kontain-faas-server /	
 
