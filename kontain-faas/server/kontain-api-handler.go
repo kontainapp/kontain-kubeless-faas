@@ -18,10 +18,12 @@ func requestFileName(faasName string) string {
 	return pathName + "/" + faasName + ".request"
 }
 func responseFileName(faasName string) string {
-	return pathName + "/" + faasName + ".response"
+	return pathName + faasName + ".response"
 }
+
+// Map faas function name to kontain payload
 func execFileName(faasName string) string {
-	return pathName + "/" + faasName
+	return pathName + faasName + ".km"
 }
 
 func GetCallFunction(url string) (string, error) {
@@ -41,10 +43,12 @@ func GetCallFunction(url string) (string, error) {
 }
 
 func ApiHandlerExecCallFunction(faasName string) error {
+	containerBaseDir := "run_faas_here"
 	fp := execFileName(faasName)
-	rq := requestFileName(faasName)
-	rp := responseFileName(faasName)
-	execCmd := exec.Command(fp, rq, rp)
+//	rq := requestFileName(faasName)
+//	rp := responseFileName(faasName)
+	containerID := faasName + fmt.Sprintf("_%d", 12)
+	execCmd := exec.Command("/bin/sh", "/opt/kontain/bin/faaskrun.sh", containerBaseDir, fp, pathName, faasName + ".request", faasName + ".response", containerID)
 	err := execCmd.Run()
 	return err
 }
