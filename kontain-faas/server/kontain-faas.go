@@ -29,13 +29,10 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"sync"
 
 	proxyUtils "github.com/kubeless/kubeless/pkg/function-proxy/utils"
 	"github.com/kubeless/kubeless/pkg/functions"
 )
-
-var faasMutex = &sync.Mutex{}
 
 var (
 	funcContext functions.Context
@@ -58,34 +55,31 @@ func health(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
-func writeRequest(faasName string, e functions.Event) error {
-	url := e.Extensions.Request.URL.String()
-	return ApiHandlerWriteRequest(faasName, e.Extensions.Request.Method, url, e.Extensions.Request.Header, e.Data)
-}
+func processRequest(event *functions.Event) (int, []byte, error) {
 
-func readResponse(faasName string, e functions.Event) (int, []byte, error) {
-	code, res, err := ApiHandlerReadResponse(faasName)
-	return code, res, err
-}
-
-func processRequest(event functions.Event) (int, []byte, error) {
-	faasMutex.Lock()
-	defer faasMutex.Unlock()
+	id := getNextSerialId()
 
 	urlString := event.Extensions.Request.URL.String()
 	faasName, err := GetCallFunction(urlString)
 	if err != nil {
 		return http.StatusNotFound, []byte(""), err
 	}
-	err = writeRequest(faasName, event)
+
+	err = ApiHandlerWriteRequest(faasName, event.Extensions.Request.Method, urlString, id, event.Extensions.Request.Header, event.Data)
 	if err != nil {
 		return http.StatusInternalServerError, []byte(""), err
 	}
-	err = ApiHandlerExecCallFunction(faasName)
+
+	err = ApiHandlerExecCallFunction(faasName, id)
 	if err != nil {
 		return http.StatusInternalServerError, []byte(""), err
 	}
-	return readResponse(faasName, event)
+
+	code, res, err := ApiHandlerReadResponse(faasName, id)
+
+	ApiHandlerCleanFiles(faasName, id)
+
+	return code, res, err
 }
 
 func handle(ctx context.Context, w http.ResponseWriter, r *http.Request) ([]byte, error) {
@@ -106,7 +100,7 @@ func handle(ctx context.Context, w http.ResponseWriter, r *http.Request) ([]byte
 		},
 	}
 
-	code, res, err := processRequest(event)
+	code, res, err := processRequest(&event)
 
 	w.WriteHeader(code)
 	return []byte(res), err

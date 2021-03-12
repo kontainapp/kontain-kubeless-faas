@@ -10,19 +10,41 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync/atomic"
 )
+
+type KontainApi struct {
+	SerialId uint64
+}
+
+var kontainApi KontainApi
+
+func init() {
+	kontainApi.SerialId = 1
+}
+
+func getNextSerialId() string {
+	id := atomic.AddUint64(&kontainApi.SerialId, 1)
+	return fmt.Sprintf("%016x", id)
+}
 
 var pathName string = "/kontain/"
 
-func requestFileName(faasName string) string {
-	return pathName + "/" + faasName + ".request"
+func requestFileName(faasName string, id string) string {
+	return faasName + "-" + id + ".request"
 }
-func responseFileName(faasName string) string {
-	return pathName + faasName + ".response"
+func requestPathName(faasName string, id string) string {
+	return pathName + "/" + requestFileName(faasName, id)
+}
+func responseFileName(faasName string, id string) string {
+	return faasName + "-" + id + ".response"
+}
+func responsePathName(faasName string, id string) string {
+	return pathName + "/" + responseFileName(faasName, id)
 }
 
 // Map faas function name to kontain payload
-func execFileName(faasName string) string {
+func execPathName(faasName string) string {
 	return pathName + faasName + ".km"
 }
 
@@ -31,7 +53,7 @@ func GetCallFunction(url string) (string, error) {
 	if len(comp) == 0 {
 		return "", errors.New("Invalid URL")
 	}
-	fp := execFileName(comp[1])
+	fp := execPathName(comp[1])
 	finfo, err := os.Stat(fp)
 	if err != nil {
 		return comp[1], err
@@ -42,19 +64,19 @@ func GetCallFunction(url string) (string, error) {
 	return comp[1], nil
 }
 
-func ApiHandlerExecCallFunction(faasName string) error {
+func ApiHandlerExecCallFunction(faasName string, id string) error {
 	containerBaseDir := "run_faas_here"
-	fp := execFileName(faasName)
-//	rq := requestFileName(faasName)
-//	rp := responseFileName(faasName)
-	containerID := faasName + fmt.Sprintf("_%d", 12)
-	execCmd := exec.Command("/bin/sh", "/opt/kontain/bin/faaskrun.sh", containerBaseDir, fp, pathName, faasName + ".request", faasName + ".response", containerID)
+	fp := execPathName(faasName)
+	rq := requestFileName(faasName, id)
+	rp := responseFileName(faasName, id)
+	containerID := faasName + "-" + id
+	execCmd := exec.Command("/bin/sh", "/opt/kontain/bin/faaskrun.sh", containerBaseDir, fp, pathName, rq, rp, containerID)
 	err := execCmd.Run()
 	return err
 }
 
-func ApiHandlerWriteRequest(faasName string, method string, url string, header http.Header, data string) error {
-	fn := requestFileName(faasName)
+func ApiHandlerWriteRequest(faasName string, method string, url string, id string, header http.Header, data string) error {
+	fn := requestPathName(faasName, id)
 	fd, err := os.OpenFile(fn, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0777)
 	if err != nil {
 		return err
@@ -78,13 +100,13 @@ func ApiHandlerWriteRequest(faasName string, method string, url string, header h
 	return nil
 }
 
-func ApiHandlerReadRequest(faasName string) (string, string, []byte, error) {
+func ApiHandlerReadRequest(faasName string, id string) (string, string, []byte, error) {
 	var method string
 	var url string
 	var decData []byte
 	header := make(map[string][]string)
 
-	fn := requestFileName(faasName)
+	fn := requestPathName(faasName, id)
 	fd, err := os.OpenFile(fn, os.O_RDWR|os.O_CREATE, 0777)
 	if err != nil {
 		return method, url, decData, err
@@ -137,8 +159,8 @@ func ApiHandlerReadRequest(faasName string) (string, string, []byte, error) {
 	return method, url, decData, nil
 }
 
-func ApiHandlerWriteResponse(faasName string, statusCode int, data []byte) error {
-	fn := responseFileName(faasName)
+func ApiHandlerWriteResponse(faasName string, id string, statusCode int, data []byte) error {
+	fn := responsePathName(faasName, id)
 	fd, err := os.OpenFile(fn, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0777)
 	if err != nil {
 		return err
@@ -151,11 +173,11 @@ func ApiHandlerWriteResponse(faasName string, statusCode int, data []byte) error
 	return nil
 }
 
-func ApiHandlerReadResponse(faasName string) (int, []byte, error) {
+func ApiHandlerReadResponse(faasName string, id string) (int, []byte, error) {
 	code := http.StatusNotFound
 	decData := []byte("")
 
-	fn := responseFileName(faasName)
+	fn := responsePathName(faasName, id)
 	fd, err := os.OpenFile(fn, os.O_RDONLY, 0)
 	if err != nil {
 		return code, decData, err
@@ -182,4 +204,11 @@ func ApiHandlerReadResponse(faasName string) (int, []byte, error) {
 	}
 
 	return code, decData, nil
+}
+
+func ApiHandlerCleanFiles(faasName string, id string) {
+	reqFn := requestPathName(faasName, id)
+	os.Remove(reqFn)
+	resFn := responsePathName(faasName, id)
+	os.Remove(resFn)
 }
