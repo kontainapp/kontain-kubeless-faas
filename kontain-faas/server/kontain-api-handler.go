@@ -56,7 +56,7 @@ func GetCallFunction(url string) (string, error) {
 	fp := execPathName(comp[1])
 	finfo, err := os.Stat(fp)
 	if err != nil {
-		return comp[1], err
+		return fp, err
 	}
 	if finfo.Mode().Perm()&0111 != 0111 {
 		return comp[1], errors.New("Invalid permissions on executable")
