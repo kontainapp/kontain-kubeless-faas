@@ -43,12 +43,13 @@ func GetCallFunction(url string) (string, error) {
 }
 
 func ApiHandlerExecCallFunction(faasName string) error {
-	containerBaseDir := "run_faas_here"
+	//containerBaseDir := "run_faas_here"
 	fp := execFileName(faasName)
-//	rq := requestFileName(faasName)
-//	rp := responseFileName(faasName)
-	containerID := faasName + fmt.Sprintf("_%d", 12)
-	execCmd := exec.Command("/bin/sh", "/opt/kontain/bin/faaskrun.sh", containerBaseDir, fp, pathName, faasName + ".request", faasName + ".response", containerID)
+	rq := requestFileName(faasName)
+	rp := responseFileName(faasName)
+	//containerID := faasName + fmt.Sprintf("_%d", 12)
+	//execCmd := exec.Command("/bin/sh", "/opt/kontain/bin/faaskrun.sh", containerBaseDir, fp, pathName, faasName+".request", faasName+".response", containerID)
+	execCmd := exec.Command("/opt/kontain/bin/km", "--input-data", rq, "--output-data", rp, fp)
 	err := execCmd.Run()
 	return err
 }
