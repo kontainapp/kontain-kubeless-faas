@@ -33,6 +33,7 @@ ENTRYPOINT [ "/kontain-faas-server" ]
 RUN mkdir /kontain
 COPY test_funcs/test_func1 /kontain
 COPY test_funcs/test_func_data_with_hc.km /kontain
+COPY test_funcs/test_func_data_with_hc.json /kontain
 
 # Get libraries for krun
 RUN dnf install -y yajl-devel libseccomp-devel
