@@ -78,10 +78,10 @@ func ApiHandlerExecCallFunction(faasName string, id string) error {
 	containerId := faasName + "-" + id
 
 	cotainerRootDir, err := createKontainFunctionRootImage(pathName+"/"+containerBaseDir, containerId, execPath, configPath)
+	defer cleanupKontainFunctionRootImage(cotainerRootDir)
 	if err != nil {
 		return err
 	}
-	defer cleanupKontainFunctionRootImage(cotainerRootDir)
 
 	execCmd := exec.Command("/opt/kontain/bin/krun", "run", "--no-new-keyring", "--bundle="+cotainerRootDir, containerId)
 	err = execCmd.Run()
