@@ -25,7 +25,9 @@ func init() {
 
 func getNextSerialId() string {
 	id := atomic.AddUint64(&kontainApi.SerialId, 1)
-	return fmt.Sprintf("%016x", id)
+	//return fmt.Sprintf("%016x", id)
+	_ = id
+	return fmt.Sprintf("%016x", 0)
 }
 
 var pathName string = "/kontain/"
@@ -47,6 +49,9 @@ func responsePathName(faasName string, id string) string {
 func execPathName(faasName string) string {
 	return pathName + faasName + ".km"
 }
+func configPathName(faasName string) string {
+	return pathName + faasName + ".json"
+}
 
 func GetCallFunction(url string) (string, error) {
 	comp := strings.Split(url, "/")
@@ -66,12 +71,20 @@ func GetCallFunction(url string) (string, error) {
 
 func ApiHandlerExecCallFunction(faasName string, id string) error {
 	containerBaseDir := "run_faas_here"
-	fp := execPathName(faasName)
-	rq := requestFileName(faasName, id)
-	rp := responseFileName(faasName, id)
-	containerID := faasName + "-" + id
-	execCmd := exec.Command("/bin/sh", "/opt/kontain/bin/faaskrun.sh", containerBaseDir, fp, pathName, rq, rp, containerID)
-	err := execCmd.Run()
+	execPath := execPathName(faasName)
+	configPath := configPathName(faasName)
+	//rq := requestFileName(faasName, id)
+	//rp := responseFileName(faasName, id)
+	containerId := faasName + "-" + id
+
+	cotainerRootDir, err := createKontainFunctionRootImage(pathName+"/"+containerBaseDir, containerId, execPath, configPath)
+	defer cleanupKontainFunctionRootImage(cotainerRootDir)
+	if err != nil {
+		return err
+	}
+
+	execCmd := exec.Command("/opt/kontain/bin/krun", "run", "--no-new-keyring", "--bundle="+cotainerRootDir, containerId)
+	err = execCmd.Run()
 	return err
 }
 

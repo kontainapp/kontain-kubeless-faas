@@ -1,0 +1,127 @@
+{
+    "ociVersion": "1.0.0",
+    "process": {
+        "user": {
+            "uid": 0,
+            "gid": 0
+        },
+        "terminal": false,
+        "args": [
+            "/opt/kontain/bin/km",
+            "--input-data",
+            "/kontain/test_func_data_with_hc-0000000000000000.request",
+            "--output-data",
+            "/kontain/test_func_data_with_hc-0000000000000000.response",
+            "/usr/bin/test_func_data_with_hc.km"
+        ],
+        "env": [
+            "PATH=/usr/bin",
+            "TERM=xterm"
+        ],
+        "cwd": "/",
+        "noNewPrivileges": true
+    },
+    "root": {
+        "path": "rootfs"
+    },
+    "mounts": [
+        {
+            "destination": "/proc",
+            "type": "proc"
+        },
+        {
+            "destination": "/sys",
+            "type": "sysfs",
+            "source": "sysfs",
+            "options": [
+                "nosuid",
+                "noexec",
+                "nodev",
+                "ro"
+            ]
+        },
+        {
+            "destination": "/sys/fs/cgroup",
+            "type": "cgroup",
+            "source": "cgroup",
+            "options": [
+                "nosuid",
+                "noexec",
+                "nodev",
+                "relatime",
+                "rw"
+            ]
+        },
+        {
+            "destination": "/dev",
+            "type": "tmpfs",
+            "source": "tmpfs",
+            "options": [
+                "nosuid",
+                "strictatime",
+                "mode=755",
+                "size=65536k"
+            ]
+        },
+        {
+            "destination": "/dev/pts",
+            "type": "devpts",
+            "source": "devpts",
+            "options": [
+                "nosuid",
+                "noexec",
+                "newinstance",
+                "ptmxmode=0666",
+                "mode=0620"
+            ]
+        },
+        {
+            "destination": "/dev/shm",
+            "type": "tmpfs",
+            "source": "shm",
+            "options": [
+                "nosuid",
+                "noexec",
+                "nodev",
+                "mode=1777",
+                "size=65536k"
+            ]
+        },
+        {
+            "destination": "/dev/mqueue",
+            "type": "mqueue",
+            "source": "mqueue",
+            "options": [
+                "nosuid",
+                "noexec",
+                "nodev"
+            ]
+        },
+        {
+            "destination": "/kontain",
+            "type": "none",
+            "source": "/kontain/",
+            "options": ["bind", "rw"]
+        }
+    ],
+    "linux": {
+        "rootfsPropagation": "rprivate",
+        "namespaces": [
+            {
+                "type": "mount"
+            },
+            {
+                "type": "pid"
+            },
+            {
+                "type": "user"
+            },
+            {
+                "type": "ipc"
+            },
+            {
+                "type": "cgroup"
+            }
+        ]
+    }
+}
