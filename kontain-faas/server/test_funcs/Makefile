@@ -13,6 +13,7 @@ test_func_km: test_func_km.c
 clean:
 	rm -f test_func1 test_func_km test_func_data_with_hc.km
 
-images: test_func_km
+images: test_func1 test_func_km test_func_data_with_hc.km
 	docker build -t test_func_1 -f test_func_1.dockerfile  .
 	docker build -t test_func_2 -f test_func_2.dockerfile  .
+	docker build -t test_func_data_with_hc -f test_func_data_with_hc.dockerfile .
