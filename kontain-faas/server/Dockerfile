@@ -50,6 +50,3 @@ RUN dnf install -y yajl-devel libseccomp-devel
 # net-tools can help with network issures inside the container
 RUN dnf install -y skopeo net-tools bind-utils iputils
 COPY oci-image-tool /usr/bin
-
-# Get the kontain programs into the container
-COPY faaskrun.sh /opt/kontain/bin
