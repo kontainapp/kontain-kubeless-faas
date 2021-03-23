@@ -14,6 +14,14 @@
 FROM fedora:31
 
 ARG KM_TAR
+ARG DHOST
+
+# Hack, hack hack.  We need a more general way to access the container repository inside of minikube
+# or the real kube for that matter.  This stuff was just determined empirically.
+ENV DOCKER_HOST=$DHOST
+ENV DOCKER_CERT_PATH=/root/.minikube/certs
+RUN mkdir -p /root/.minikube/certs
+COPY minikubecerts /root/.minikube/certs
 
 # Go programs compiled on linux expect the GLIBC dynamic loader.
 # When using "FROM alpine:3.7" we don't have the gnu loader.
@@ -37,6 +45,8 @@ COPY test_funcs/test_func_data_with_hc.json /kontain
 
 # Get libraries for krun
 RUN dnf install -y yajl-devel libseccomp-devel
-
-# Get the kontain programs into the container
-COPY faaskrun.sh /opt/kontain/bin
+# We need skopeo to pull the function containers and image tool to unpack the container into
+# a bundle for krun.
+# net-tools can help with network issures inside the container
+RUN dnf install -y skopeo net-tools bind-utils iputils
+COPY oci-image-tool /usr/bin

@@ -25,9 +25,7 @@ func init() {
 
 func getNextSerialId() string {
 	id := atomic.AddUint64(&kontainApi.SerialId, 1)
-	//return fmt.Sprintf("%016x", id)
-	_ = id
-	return fmt.Sprintf("%016x", 0)
+	return fmt.Sprintf("%016x", id)
 }
 
 var pathName string = "/kontain/"
@@ -71,20 +69,32 @@ func GetCallFunction(url string) (string, error) {
 
 func ApiHandlerExecCallFunction(faasName string, id string) error {
 	containerBaseDir := "run_faas_here"
-	execPath := execPathName(faasName)
-	configPath := configPathName(faasName)
-	//rq := requestFileName(faasName, id)
-	//rp := responseFileName(faasName, id)
+	//execPath := execPathName(faasName)
+	//configPath := configPathName(faasName)
+	rq := requestFileName(faasName, id)
+	rp := responseFileName(faasName, id)
 	containerId := faasName + "-" + id
 
-	cotainerRootDir, err := createKontainFunctionRootImage(pathName+"/"+containerBaseDir, containerId, execPath, configPath)
-	defer cleanupKontainFunctionRootImage(cotainerRootDir)
+	// Get the runtime bundle for this function
+        bundleDir, err := getFunctionBundle(containerBaseDir, faasName, containerId);
 	if err != nil {
 		return err
 	}
 
-	execCmd := exec.Command("/opt/kontain/bin/krun", "run", "--no-new-keyring", "--bundle="+cotainerRootDir, containerId)
-	err = execCmd.Run()
+	// Put our config.json in the runtime bundle
+	configFile := "config-" + containerId + ".json"
+	configPath := bundleDir + "/" + configFile
+	err = createConfigJson(configPath, faasName, pathName, rq, rp)
+	if err != nil {
+		return err
+	}
+
+	execCmd := exec.Command("/opt/kontain/bin/krun", "run", "--no-new-keyring", "--config=" + configPath, "--bundle=" + bundleDir, containerId)
+	output, err := execCmd.CombinedOutput()
+	fmt.Printf("Output of %s:\n%s\n============\n", execCmd.String(), output)
+
+	// Cleanup
+	os.Remove(configPath)
 	return err
 }
 
