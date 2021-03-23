@@ -13,7 +13,6 @@
 #FROM alpine:3.7
 FROM fedora:31
 
-ARG KM_TAR
 ARG DHOST
 
 # Hack, hack hack.  We need a more general way to access the container repository inside of minikube
@@ -21,7 +20,7 @@ ARG DHOST
 ENV DOCKER_HOST=$DHOST
 ENV DOCKER_CERT_PATH=/root/.minikube/certs
 RUN mkdir -p /root/.minikube/certs
-COPY minikubecerts /root/.minikube/certs
+COPY tmp-bld/minikubecerts /root/.minikube/certs
 
 # Go programs compiled on linux expect the GLIBC dynamic loader.
 # When using "FROM alpine:3.7" we don't have the gnu loader.
@@ -30,7 +29,7 @@ COPY minikubecerts /root/.minikube/certs
 #RUN mkdir /lib64 && ln -s /lib/libc.musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2
 
 # Arrange for KM binaries and libraries to be in the container.
-COPY $KM_TAR /tmp/km.tgz
+COPY tmp-bld/kontain.tar.gz /tmp/km.tgz
 RUN mkdir -p /opt/kontain && tar -C /opt/kontain -xzf /tmp/km.tgz && rm /tmp/km.tgz
 
 COPY kontain-faas-server /	
@@ -49,4 +48,4 @@ RUN dnf install -y yajl-devel libseccomp-devel
 # a bundle for krun.
 # net-tools can help with network issures inside the container
 RUN dnf install -y skopeo net-tools bind-utils iputils
-COPY oci-image-tool /usr/bin
+COPY tmp-bld/oci-image-tool /usr/bin
