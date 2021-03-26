@@ -10,3 +10,6 @@
 
 all:
 	make -C kontain-faas/server all
+
+test:
+	make -C kontain-faas/server test
