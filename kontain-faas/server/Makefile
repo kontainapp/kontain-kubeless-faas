@@ -1,4 +1,4 @@
-# Copyright © 2022 Kontain Inc. All rights reserved.
+# Copyright © 2021 Kontain Inc. All rights reserved.
 #
 # Kontain Inc CONFIDENTIAL
 #
@@ -44,6 +44,8 @@ oci-image-tool:
 		exit 1; \
 	fi
 	rm -f go.mod go.sum
+	# TODO: Should have a specific version. Can't do in GOPATH mode.
+	# TODO: learn more about go module system and fix this.
 	go get -d github.com/opencontainers/image-tools/cmd/oci-image-tool
 	make -C $(GOPATH)/src/github.com/opencontainers/image-tools  tool
 	cp $(GOPATH)/src/github.com/opencontainers/image-tools/oci-image-tool tmp-bld
