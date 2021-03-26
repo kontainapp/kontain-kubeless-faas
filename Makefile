@@ -8,9 +8,8 @@
 #  information is strictly prohibited without the express written permission of
 #  Kontain Inc
 
-
 all:
-	make -C kubeless
-	make -C runtimes
-	make -C cronjob-trigger
-	make -C http-trigger
+	make -C kontain-faas/server all
+
+test:
+	make -C kontain-faas/server test
