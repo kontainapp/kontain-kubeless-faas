@@ -16,7 +16,7 @@ steps:
   - bash: make -C kontain-faas/server/ kontain-faas-server
     displayName: 'Make kontain-faas-server'
 
-  - bash: wget wget https://raw.githubusercontent.com/kontainapp/km-releases/master/kontain-install.sh -q
+  - bash: wget https://raw.githubusercontent.com/kontainapp/km-releases/master/kontain-install.sh -q
     displayName: 'Get KM release'
   
   - bash: chmod a+x./kontain-install.sh
