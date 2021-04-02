@@ -18,11 +18,14 @@ steps:
 
   - bash: wget wget https://raw.githubusercontent.com/kontainapp/km-releases/master/kontain-install.sh -q
     displayName: 'Get KM release'
+  
+  - bash: chmod a+x./kontain-install.sh
+    displayName 'Populate /opt/kontain'
 
   - bash: mkdir /opt/kontain
     displayName 'Make /opt/kontain'
 
-  - script: bash ./kontain-install.sh
+  - bash: ./kontain-install.sh
     displayName 'Populate /opt/kontain'
 
   - bash: make -C kontain-faas/server/test_funcs/ all
