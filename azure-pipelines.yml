@@ -11,7 +11,7 @@ pool:
 
 steps:
   - checkout: self
-    submodules: true
+    submodules: false
 
   - bash: make -C kontain-faas/server/ kontain-faas-server
     displayName: 'Make kontain-faas-server'
