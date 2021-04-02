@@ -16,5 +16,5 @@ steps:
   - bash: make -C kontain-faas/server/ kontain-faas-server
     displayName: 'Make kontain-faas-server'
 
-  - bash: make -C kontain/server/kontain-faas-server/tests all
+  - bash: make -C kontain-faas/server/test_funcs/ all
     displayName: 'Make test functions'
