@@ -1,0 +1,32 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+- main
+
+pr:
+- main
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - checkout: self
+    submodules: false
+
+  - bash: make -C kontain-faas/server/ kontain-faas-server
+    displayName: 'Make kontain-faas-server'
+
+  - bash: wget https://raw.githubusercontent.com/kontainapp/km-releases/master/kontain-install.sh -q
+    displayName: 'Get KM release'
+  
+  - bash: |
+      chmod a+x ./kontain-install.sh
+      mkdir /opt/kontain
+      ./kontain-install.sh v0.1-edge
+    displayName: 'Populate /opt/kontain'
+
+  - bash: make -C kontain-faas/server/test_funcs/ all
+    displayName: 'Make test functions'

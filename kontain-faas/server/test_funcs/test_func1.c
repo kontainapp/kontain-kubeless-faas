@@ -18,7 +18,7 @@ main(int argc, char *argv[])
   printf("request: %s response %s\n", request_path, response_path);
   FILE* resp_f = fopen(response_path, "w");
   if (resp_f == NULL) {
-    fprintf(stderr, "fopen(%s, \"w\") failed - %d\n", errno);
+    fprintf(stderr, "fopen(%s, \"w\") failed - %d\n", response_path, errno);
     return 1;
   }
   fprintf(resp_f, "STATUSCODE: 200\n");
