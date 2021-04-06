@@ -6,6 +6,9 @@
 trigger:
 - main
 
+pr:
+- main
+
 pool:
   vmImage: ubuntu-latest
 
@@ -19,13 +22,10 @@ steps:
   - bash: wget https://raw.githubusercontent.com/kontainapp/km-releases/master/kontain-install.sh -q
     displayName: 'Get KM release'
   
-  - bash: chmod a+x ./kontain-install.sh
-    displayName: 'Populate /opt/kontain'
-
-  - bash: mkdir /opt/kontain
-    displayName: 'Make /opt/kontain'
-
-  - bash: ./kontain-install.sh v0.1-edge
+  - bash: |
+      chmod a+x ./kontain-install.sh
+      mkdir /opt/kontain
+      ./kontain-install.sh v0.1-edge
     displayName: 'Populate /opt/kontain'
 
   - bash: make -C kontain-faas/server/test_funcs/ all
