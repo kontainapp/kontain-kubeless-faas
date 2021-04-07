@@ -9,7 +9,7 @@
 #  Kontain Inc
 
 all:
-	make -C kontain-faas/server all
+	make -C kontain-faas/cmd/server all
 
 test:
-	make -C kontain-faas/server test
+	make -C kontain-faas/cmd/server test

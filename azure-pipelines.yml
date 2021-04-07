@@ -16,7 +16,7 @@ steps:
   - checkout: self
     submodules: false
 
-  - bash: make -C kontain-faas/server/ kontain-faas-server
+  - bash: make -C kontain-faas/cmd/server/ kontain-faas-server
     displayName: 'Make kontain-faas-server'
 
   - bash: wget https://raw.githubusercontent.com/kontainapp/km-releases/master/kontain-install.sh -q
@@ -28,5 +28,5 @@ steps:
       ./kontain-install.sh v0.1-edge
     displayName: 'Populate /opt/kontain'
 
-  - bash: make -C kontain-faas/server/test_funcs/ all
+  - bash: make -C kontain-faas/cmd/server/test_funcs/ all
     displayName: 'Make test functions'
