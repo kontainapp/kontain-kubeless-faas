@@ -63,7 +63,7 @@ test-func-images:
 	make -C test_funcs images
 
 test:
-	kubectl create -f server.yaml
+	kubectl create -f ../deployments/kontain-faas.yaml
 	sleep 5
 	bats tests/test.bats
-	kubectl delete -f server.yaml
+	kubectl delete -f ../deployments/kontain-faas.yaml
