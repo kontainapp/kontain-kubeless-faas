@@ -22,7 +22,6 @@ spec:
                   type: string
                 handler:
                   type: string
-            required: [ "runtime", "function", "handler"]
   scope: Namespaced
   names:
     kind: Function
