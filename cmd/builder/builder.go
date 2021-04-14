@@ -20,64 +20,67 @@ limitations under the License.
 package main
 
 import (
-	"fmt"
-	"os"
+	"flag"
+	"kontain-faas/pkg/signals"
 
-	"github.com/sirupsen/logrus"
-	"github.com/spf13/cobra"
-	"honnef.co/go/tools/version"
+	"k8s.io/klog/v2"
+	// Uncomment the following line to load the gcp plugin (only required to authenticate against GKE clusters).
+	// _ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
+	// "k8s.io/sample-controller/pkg/signals"
+	//	clientset "./pkg/generated/clientset/versioned"
+	//	informers "./pkg/generated/informers/externalversions"
 )
 
-const (
-	globalUsage = `` //TODO: adding explanation
+var (
+	masterURL  string
+	kubeconfig string
 )
-
-var rootCmd = &cobra.Command{
-	Use:   "kontain-builder",
-	Short: "kontain builder",
-	Long:  globalUsage,
-	Run: func(cmd *cobra.Command, args []string) {
-		/*
-			kubelessClient, err := utils.GetFunctionClientInCluster()
-			if err != nil {
-				logrus.Fatalf("Cannot get kubeless client: %v", err)
-			}
-
-			functionCfg := controller.Config{
-				KubeCli:        utils.GetClient(),
-				FunctionClient: kubelessClient,
-			}
-
-			restCfg, err := utils.GetInClusterConfig()
-			if err != nil {
-				logrus.Fatalf("Cannot get REST client: %v", err)
-			}
-			// ServiceMonitor client is needed for handling monitoring resources
-			smclient, err := monitoringv1alpha1.NewForConfig(restCfg)
-			if err != nil {
-				logrus.Fatal(err)
-			}
-
-			functionController := controller.NewFunctionController(functionCfg, smclient)
-
-			stopCh := make(chan struct{})
-			defer close(stopCh)
-
-			go functionController.Run(stopCh)
-
-			sigterm := make(chan os.Signal, 1)
-			signal.Notify(sigterm, syscall.SIGTERM)
-			signal.Notify(sigterm, syscall.SIGINT)
-			<-sigterm
-		*/
-		logrus.Infof("hello world")
-	},
-}
 
 func main() {
-	logrus.Infof("Running Kontain-Faas controller manager version: %v", version.Version)
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+	klog.InitFlags(nil)
+	flag.Parse()
+
+	klog.Infof("hello world")
+
+	// set up signals so we handle the first shutdown signal gracefully
+	stopCh := signals.SetupSignalHandler()
+	klog.Info(stopCh)
+
+	/*
+		cfg, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
+		if err != nil {
+			klog.Fatalf("Error building kubeconfig: %s", err.Error())
+		}
+
+		kubeClient, err := kubernetes.NewForConfig(cfg)
+		if err != nil {
+			klog.Fatalf("Error building kubernetes clientset: %s", err.Error())
+		}
+
+		exampleClient, err := clientset.NewForConfig(cfg)
+		if err != nil {
+			klog.Fatalf("Error building example clientset: %s", err.Error())
+		}
+
+		kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
+		exampleInformerFactory := informers.NewSharedInformerFactory(exampleClient, time.Second*30)
+
+		controller := NewController(kubeClient, exampleClient,
+			kubeInformerFactory.Apps().V1().Deployments(),
+			exampleInformerFactory.Samplecontroller().V1alpha1().Foos())
+
+		// notice that there is no need to run Start methods in a separate goroutine. (i.e. go kubeInformerFactory.Start(stopCh)
+		// Start method is non-blocking and runs all registered informers in a dedicated goroutine.
+		kubeInformerFactory.Start(stopCh)
+		exampleInformerFactory.Start(stopCh)
+
+		if err = controller.Run(2, stopCh); err != nil {
+			klog.Fatalf("Error running controller: %s", err.Error())
+		}
+	*/
+}
+
+func init() {
+	flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
+	flag.StringVar(&masterURL, "master", "", "The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster.")
 }
