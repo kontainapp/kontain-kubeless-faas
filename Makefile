@@ -13,3 +13,9 @@ all:
 
 test:
 	make -C kontain-faas/cmd/server test
+
+builder:
+	bash scripts/make_builder.sh
+
+clean:
+	@rm -rf bin
