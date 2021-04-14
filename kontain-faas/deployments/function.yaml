@@ -1,0 +1,8 @@
+apiVersion: kontain.app/v1beta
+kind: Function
+metadata:
+  name: hello-function
+spec:
+  runtime: "python3.8"
+  function: "def handler():\n  return 'hello'"
+  handler: "handler"
