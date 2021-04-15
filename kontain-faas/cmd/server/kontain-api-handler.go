@@ -1,3 +1,13 @@
+// Copyright © 2021 Kontain Inc. All rights reserved.
+//
+// Kontain Inc CONFIDENTIAL
+//
+// This file includes unpublished proprietary source code of Kontain Inc. The
+// copyright notice above does not evidence any actual or intended publication
+// of such source code. Disclosure of this source code or any related
+// proprietary information is strictly prohibited without the express written
+// permission of Kontain Inc.
+
 package main
 
 import (
@@ -28,7 +38,11 @@ func getNextSerialId() string {
 	return fmt.Sprintf("%016x", id)
 }
 
-var pathName string = "/kontain/"
+const (
+	pathName                  string = "/kontain"
+	containerBaseDir          string = "run_faas_here"
+	functionContainerImageDir string = "function_container_images"
+)
 
 func requestFileName(faasName string, id string) string {
 	return faasName + "-" + id + ".request"
@@ -43,12 +57,20 @@ func responsePathName(faasName string, id string) string {
 	return pathName + "/" + responseFileName(faasName, id)
 }
 
-// Map faas function name to kontain payload
-func execPathName(faasName string) string {
-	return pathName + faasName + ".km"
+func containerBaseDirPathName() string {
+	return pathName + "/" + containerBaseDir + "/"
 }
-func configPathName(faasName string) string {
-	return pathName + faasName + ".json"
+
+func functionImageDirPathName() string {
+	return pathName + "/" + containerBaseDir + "/" + functionContainerImageDir + "/"
+}
+
+func functionBundleDirPathName(faasName string) string {
+	return pathName + "/" + containerBaseDir + "/" + faasName + "/"
+}
+
+func instanceConfigPathName(faasName string, containerId string) string {
+	return pathName + "/" + containerBaseDir + "/" + faasName + "/" + "config-" + containerId + ".json"
 }
 
 func GetCallFunction(url string) (string, error) {
@@ -56,40 +78,30 @@ func GetCallFunction(url string) (string, error) {
 	if len(comp) == 0 {
 		return "", errors.New("Invalid URL")
 	}
-	fp := execPathName(comp[1])
-	finfo, err := os.Stat(fp)
-	if err != nil {
-		return fp, err
-	}
-	if finfo.Mode().Perm()&0111 != 0111 {
-		return comp[1], errors.New("Invalid permissions on executable")
-	}
 	return comp[1], nil
 }
 
 func ApiHandlerExecCallFunction(faasName string, id string) error {
-	containerBaseDir := "run_faas_here"
-	//execPath := execPathName(faasName)
-	//configPath := configPathName(faasName)
-	rq := requestFileName(faasName, id)
-	rp := responseFileName(faasName, id)
-	containerId := faasName + "-" + id
 
+	functionImageDir := functionImageDirPathName()
+	functionBundleDir := functionBundleDirPathName(faasName)
 	// Get the runtime bundle for this function
-        bundleDir, err := getFunctionBundle(containerBaseDir, faasName, containerId);
+	err := getFunctionBundle(faasName, functionImageDir, functionBundleDir)
 	if err != nil {
 		return err
 	}
 
-	// Put our config.json in the runtime bundle
-	configFile := "config-" + containerId + ".json"
-	configPath := bundleDir + "/" + configFile
+	containerId := faasName + "-" + id
+	configPath := instanceConfigPathName(faasName, containerId)
+
+	rq := requestPathName(faasName, id)
+	rp := responsePathName(faasName, id)
 	err = createConfigJson(configPath, faasName, pathName, rq, rp)
 	if err != nil {
 		return err
 	}
 
-	execCmd := exec.Command("/opt/kontain/bin/krun", "run", "--no-new-keyring", "--config=" + configPath, "--bundle=" + bundleDir, containerId)
+	execCmd := exec.Command("/opt/kontain/bin/krun", "run", "--no-new-keyring", "--config="+configPath, "--bundle="+functionBundleDir, containerId)
 	output, err := execCmd.CombinedOutput()
 	fmt.Printf("Output of %s:\n%s\n============\n", execCmd.String(), output)
 

@@ -30,9 +30,7 @@ minikubecerts:
 	cp $(DOCKER_CERT_PATH)/* tmp-bld/minikubecerts
 
 # Build the faas server
-kontain-faas-server:	kontain-api-handler.go	kontain-faas.go  kontain-function-root.go
-	rm -f go.mod go.sum
-	go mod init kontain-faas
+kontain-faas-server: kontain-api-handler.go kontain-faas.go kontain-function-root.go
 	GOOS=linux GOARCH=amd64 go build -o kontain-faas-server .
 
 # Build the container image unpack tool for the faas server to use
@@ -67,3 +65,6 @@ test:
 	sleep 5
 	bats tests/test.bats
 	kubectl delete -f server.yaml
+
+clean:
+	rm -f kontain-faas-server
