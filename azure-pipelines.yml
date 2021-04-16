@@ -30,3 +30,5 @@ steps:
 
   - bash: make -C kontain-faas/cmd/server/test_funcs/ all
     displayName: 'Make test functions'
+
+  - bash: make builder

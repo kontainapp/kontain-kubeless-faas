@@ -1,0 +1,35 @@
+---
+#
+# One of these are created when a user defines a fucntion.
+# The fields are:
+#  runtime - runtime template to use. e.g. "python3.8"
+#  function - Source code for function.
+#  handler - name of function in source to call.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: functions.kontain.app
+spec:
+  group: kontain.app
+  versions:
+    - name: v1beta
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                runtime:
+                  type: string
+                source:
+                  type: string
+                handler:
+                  type: string
+  scope: Namespaced
+  names:
+    kind: Function
+    plural: functions
+    singular: function
