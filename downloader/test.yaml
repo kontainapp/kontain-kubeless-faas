@@ -1,0 +1,6 @@
+apiVersion: build.kontain.app/v1
+kind: Image
+metadata:
+  name: func
+spec:
+  image: "test_func_data_with_hc:latest"
