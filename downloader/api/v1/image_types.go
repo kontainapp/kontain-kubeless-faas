@@ -25,10 +25,8 @@ import (
 
 // ImageSpec defines the desired state of Image
 type ImageSpec struct {
-	// Function name
-	Function string `json:"function,omitempty"`
-
-	// Image name
+	// Image name in skopeo format:
+	//  Docker Hub: `docker://docker.io/<account>/<image_name>:<sha>`
 	Image string `json:"image,omitempty"`
 }
 
@@ -36,6 +34,7 @@ type ImageSpec struct {
 type ImageStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	Message string `json:"message,omitempty"`
 }
 
 // +kubebuilder:object:root=true

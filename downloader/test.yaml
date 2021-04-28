@@ -3,4 +3,4 @@ kind: Image
 metadata:
   name: func
 spec:
-  image: "test_func_data_with_hc:latest"
+  image: "docker://docker.io/muthatkontain/hello:a52ced9a4c343acf4a57f8fa9c40c5d57676b620a7d041bcd8b53e47b311ff80"

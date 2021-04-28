@@ -18,8 +18,12 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
+	"io/ioutil"
 	"os"
 	"os/exec"
+
+	"github.com/google/uuid"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -62,36 +66,72 @@ func (r *ImageReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *ImageReconciler) CreateFunction(req ctrl.Request, image buildv1.Image) (ctrl.Result, error) {
+	r.Log.Info("New function image", "req", req)
+
 	// If we have a copy of the function container, use it
-	functionImageDir := "/kontain/images/" + req.NamespacedName.Namespace + "/" + req.NamespacedName.Name
-	_, err := os.Stat(functionImageDir)
+	functionDownloadDir := "/kontain/downloads/" + uuid.New().String()
+	_, err := os.Stat(functionDownloadDir)
 	if err == nil {
+		image.Status.Message = "use existing"
 		r.Log.Info("Use existing bundle", "name", req)
 		return ctrl.Result{}, nil
 	}
 
 	// make a directory for the container image
-	err = os.MkdirAll(functionImageDir, 0755)
+	err = os.MkdirAll(functionDownloadDir, 0755)
 	if err != nil {
+		image.Status.Message = "mkdir failure"
 		r.Log.Info("Make bundle director failed", "name", req, "err", err)
 		return ctrl.Result{}, err
 	}
+	defer os.RemoveAll(functionDownloadDir)
+
+	// Use skopeo to download image from registry
 	dockerHost := os.Getenv("DOCKER_HOST")
 	dockerCertPath := os.Getenv("DOCKER_CERT_PATH")
 	faasName := image.Spec.Image
-	r.Log.Info("Create record", "req", req, "image", image, "dockerHost", dockerHost, "dockerCertPath", dockerCertPath,
-		"faasName", faasName, "functionImageDir", functionImageDir)
-	r.Log.Info("/usr/bin/skopeo copy --src-daemon-host " + dockerHost + " --src-cert-dir " + dockerCertPath +
-		" docker-daemon:" + faasName + " oci:" + functionImageDir)
 	execCmd := exec.Command("/usr/bin/skopeo", "copy",
-		"--src-daemon-host", dockerHost, "--src-cert-dir", dockerCertPath,
-		"docker-daemon:"+faasName, "oci:"+functionImageDir)
+		"--src-daemon-host", dockerHost, "--src-cert-dir", dockerCertPath, "--insecure-policy",
+		faasName, "oci:"+functionDownloadDir)
 	output, err := execCmd.CombinedOutput()
 	if err != nil {
-		r.Log.Info("execCmd failed", "err", err, "output", output)
+		image.Status.Message = "skopeo failure"
+		r.Log.Info("execCmd failed (skopeo)", "err", err, "output", output)
 		return ctrl.Result{}, err
 	}
-	r.Log.Info("Skopeo call", "cmd", execCmd.String(), "output", output)
+	image.Status.Message = "skopeo success"
+
+	// Get the digest from index.json
+	var digest string
+	digest, err = r.OCIDigest(functionDownloadDir)
+	if err != nil {
+		r.Log.Info("OCIDigest failed", "err", err)
+		return ctrl.Result{}, err
+	}
+
+	functionImageDir := "/kontain/images/" + req.NamespacedName.Namespace + "/" + req.NamespacedName.Name
+	// Make a directory for the runtime bundle.
+	err = os.MkdirAll(functionImageDir, 0755)
+	if err != nil {
+		r.Log.Info("MkdirAll failed", "err", err)
+		return ctrl.Result{}, err
+	}
+
+	// build the runtime bundle using oci-image-tool
+	execCmd = exec.Command("/usr/bin/oci-image-tool", "unpack",
+		"--ref", "digest="+digest, functionDownloadDir, functionImageDir)
+	output, err = execCmd.CombinedOutput()
+	if err != nil {
+		r.Log.Info("execCmd failed (oct-image-tool)", "err", err, "output", output)
+		return ctrl.Result{}, err
+	}
+
+	// Remove download directoru
+	err = os.RemoveAll(functionDownloadDir)
+	if err != nil {
+		r.Log.Info("RemoveAll failed", "err", err)
+		return ctrl.Result{}, err
+	}
 	return ctrl.Result{}, nil
 }
 
@@ -110,6 +150,25 @@ func (r *ImageReconciler) DeleteFunction(req ctrl.Request) (ctrl.Result, error) 
 	return ctrl.Result{}, nil
 }
 
-func FunctionImagePath(req string) string {
-	return "/kontain/run_faas_"
+func (r *ImageReconciler) OCIDigest(downloadDir string) (string, error) {
+	type OCIManifest struct {
+		MediaType string `json:"mediaType"`
+		Digest    string `json:"digest"`
+		Size      int    `json:"size"`
+	}
+	type OCIIndex struct {
+		SchemaVersion int           `json:"schemaVersion"`
+		Manifests     []OCIManifest `json:"manifests"`
+	}
+
+	data, err := ioutil.ReadFile(downloadDir + "/index.json")
+	if err != nil {
+		r.Log.Info("Readfile failed", "file", downloadDir+"/index.json", "err", err)
+		return "", err
+	}
+
+	var ociIndex OCIIndex
+	json.Unmarshal(data, &ociIndex)
+
+	return ociIndex.Manifests[0].Digest, nil
 }

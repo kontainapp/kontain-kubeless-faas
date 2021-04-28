@@ -1,0 +1,67 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: image-viewer-role
+rules:
+- apiGroups:
+  - build.kontain.app
+  resources:
+  - images
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - build.kontain.app
+  resources:
+  - images/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: manager-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: image-viewer-role
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: default
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kontain-faas-server
+spec:
+  selector:
+    matchLabels:
+      kontain: faas-server
+  template:
+    metadata:
+      labels:
+        kontain: faas-server
+    spec:
+      containers:
+      - name: kontain-faas-server
+        image: kontain-faas-server:latest
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: kontain-shared
+          mountPath: /kontain
+      - name: kontain-downloader
+        image: faas-downloader:latest
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - name: kontain-shared
+          mountPath: /kontain
+      volumes:
+      - name: kontain-shared
+        emptyDir:
+          sizeLimit: 1Gi
+

@@ -15,3 +15,6 @@ The files that have actual changes in them are:
 * `controllers/image_controller.go`
 
 This controller runs on every pod with the faas-server.
+
+## Skopeo example
+`skopeo inspect --insecure-policy docker://docker.io/muthatkontain/hello:a52ced9a4c343acf4a57f8fa9c40c5d57676b620a7d041bcd8b53e47b311ff80`
