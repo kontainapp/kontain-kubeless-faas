@@ -32,20 +32,22 @@ COPY tmp-bld/minikubecerts /root/.minikube/certs
 COPY tmp-bld/kontain.tar.gz /tmp/km.tgz
 RUN mkdir -p /opt/kontain && tar -C /opt/kontain -xzf /tmp/km.tgz && rm /tmp/km.tgz
 
+# Get libraries for krun
+RUN dnf install -y yajl-devel libseccomp-devel
+
 COPY kontain-faas-server /	
 
 ENTRYPOINT [ "/kontain-faas-server" ]
 
-# Temporary. Hard-code the functions in the file system
-RUN mkdir /kontain
-COPY test_funcs/test_func1 /kontain
-COPY test_funcs/test_func_data_with_hc.km /kontain
-COPY test_funcs/test_func_data_with_hc.json /kontain
-
-# Get libraries for krun
-RUN dnf install -y yajl-devel libseccomp-devel
-# We need skopeo to pull the function containers and image tool to unpack the container into
-# a bundle for krun.
-# net-tools can help with network issures inside the container
-RUN dnf install -y skopeo net-tools bind-utils iputils
-COPY tmp-bld/oci-image-tool /usr/bin
+## Temporary. Hard-code the functions in the file system
+#RUN mkdir /kontain
+#COPY test_funcs/test_func1 /kontain
+#COPY test_funcs/test_func_data_with_hc.km /kontain
+#COPY test_funcs/test_func_data_with_hc.json /kontain
+#
+## We need skopeo to pull the function containers and image tool to unpack the container into
+## a bundle for krun.
+## net-tools can help with network issures inside the container
+#RUN dnf install -y skopeo net-tools bind-utils iputils
+#COPY tmp-bld/oci-image-tool /usr/bin
+#

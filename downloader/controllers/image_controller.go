@@ -23,8 +23,6 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/google/uuid"
-
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -69,47 +67,64 @@ func (r *ImageReconciler) CreateFunction(req ctrl.Request, image buildv1.Image) 
 	r.Log.Info("New function image", "req", req)
 
 	// If we have a copy of the function container, use it
-	functionDownloadDir := "/kontain/downloads/" + uuid.New().String()
-	_, err := os.Stat(functionDownloadDir)
+	ociImageDir := r.OCIImagePath(req.NamespacedName.Namespace, req.NamespacedName.Name)
+	ociRuntimeBundleDir := r.OCIRuntimeBundlePath(req.NamespacedName.Namespace, req.NamespacedName.Name)
+
+	_, err := os.Stat(ociRuntimeBundleDir)
 	if err == nil {
 		image.Status.Message = "use existing"
-		r.Log.Info("Use existing bundle", "name", req)
+		r.Log.Info("Use existing bundle", "name", ociRuntimeBundleDir)
 		return ctrl.Result{}, nil
 	}
 
-	// make a directory for the container image
-	err = os.MkdirAll(functionDownloadDir, 0755)
+	// If OCI image is already there, use it
+	_, err = os.Stat(ociImageDir)
 	if err != nil {
-		image.Status.Message = "mkdir failure"
-		r.Log.Info("Make bundle director failed", "name", req, "err", err)
-		return ctrl.Result{}, err
-	}
-	defer os.RemoveAll(functionDownloadDir)
+		/*
+			if err != fs.ErrNotExist {
+				return ctrl.Result{}, err
+			}
+		*/
 
-	// Use skopeo to download image from registry
-	dockerHost := os.Getenv("DOCKER_HOST")
-	dockerCertPath := os.Getenv("DOCKER_CERT_PATH")
-	faasName := image.Spec.Image
-	execCmd := exec.Command("/usr/bin/skopeo", "copy",
-		"--src-daemon-host", dockerHost, "--src-cert-dir", dockerCertPath, "--insecure-policy",
-		faasName, "oci:"+functionDownloadDir)
-	output, err := execCmd.CombinedOutput()
-	if err != nil {
-		image.Status.Message = "skopeo failure"
-		r.Log.Info("execCmd failed (skopeo)", "err", err, "output", output)
-		return ctrl.Result{}, err
+		// Get OCI Image
+		err = os.MkdirAll(ociImageDir, 0755)
+		if err != nil {
+			image.Status.Message = "mkdir failure"
+			r.Log.Info("Make bundle director failed", "name", req, "err", err)
+			return ctrl.Result{}, err
+		}
+		// defer os.RemoveAll(ociImageDir)
+
+		// Use skopeo to download image from registry
+		faasName := image.Spec.Image
+		/*
+			dockerHost := os.Getenv("DOCKER_HOST")
+			dockerCertPath := os.Getenv("DOCKER_CERT_PATH")
+			execCmd := exec.Command("/usr/bin/skopeo", "copy",
+				"--src-daemon-host", dockerHost, "--src-cert-dir", dockerCertPath, "--insecure-policy",
+				faasName, "oci:"+ociImageDir)
+		*/
+		execCmd := exec.Command("/usr/bin/skopeo", "copy", "--insecure-policy",
+			faasName, "oci:"+ociImageDir)
+		output, err := execCmd.CombinedOutput()
+		if err != nil {
+			image.Status.Message = "skopeo failure"
+			r.Log.Info("execCmd failed (skopeo)", "err", err, "output", output)
+			return ctrl.Result{}, err
+		}
+		image.Status.Message = "skopeo success"
 	}
-	image.Status.Message = "skopeo success"
 
 	// Get the digest from index.json
 	var digest string
-	digest, err = r.OCIDigest(functionDownloadDir)
+	digest, err = r.OCIDigest(ociImageDir)
 	if err != nil {
 		r.Log.Info("OCIDigest failed", "err", err)
 		return ctrl.Result{}, err
 	}
 
-	functionImageDir := "/kontain/images/" + req.NamespacedName.Namespace + "/" + req.NamespacedName.Name
+	// TODO: unpack into someplace else and rename(2) when done. Provents server from seeing half built things
+	functionImageDir := "/kontain/oci-runtime-bundles/" + req.NamespacedName.Namespace + "/" + req.NamespacedName.Name + "/rootfs"
 	// Make a directory for the runtime bundle.
 	err = os.MkdirAll(functionImageDir, 0755)
 	if err != nil {
@@ -117,27 +132,24 @@ func (r *ImageReconciler) CreateFunction(req ctrl.Request, image buildv1.Image) 
 		return ctrl.Result{}, err
 	}
 
-	// build the runtime bundle using oci-image-tool
-	execCmd = exec.Command("/usr/bin/oci-image-tool", "unpack",
-		"--ref", "digest="+digest, functionDownloadDir, functionImageDir)
-	output, err = execCmd.CombinedOutput()
-	if err != nil {
-		r.Log.Info("execCmd failed (oct-image-tool)", "err", err, "output", output)
-		return ctrl.Result{}, err
+	{
+
+		// build the runtime bundle using oci-image-tool
+		execCmd := exec.Command("/usr/bin/oci-image-tool", "unpack",
+			"--ref", "digest="+digest, ociImageDir, functionImageDir)
+		output, err := execCmd.CombinedOutput()
+		if err != nil {
+			r.Log.Info("execCmd failed (oct-image-tool)", "err", err, "output", output)
+			return ctrl.Result{}, err
+		}
 	}
 
-	// Remove download directoru
-	err = os.RemoveAll(functionDownloadDir)
-	if err != nil {
-		r.Log.Info("RemoveAll failed", "err", err)
-		return ctrl.Result{}, err
-	}
 	return ctrl.Result{}, nil
 }
 
 func (r *ImageReconciler) DeleteFunction(req ctrl.Request) (ctrl.Result, error) {
 	r.Log.Info("Delete record", "req", req)
-	functionImageDir := "/kontain/images/" + req.NamespacedName.Namespace + "/" + req.NamespacedName.Name
+	functionImageDir := "/kontain/oci-runtime-bundles/" + req.NamespacedName.Namespace + "/" + req.NamespacedName.Name
 	_, err := os.Stat(functionImageDir)
 	if err != nil {
 		r.Log.Info("Bundle does not exist", "name", req)
@@ -171,4 +183,12 @@ func (r *ImageReconciler) OCIDigest(downloadDir string) (string, error) {
 	json.Unmarshal(data, &ociIndex)
 
 	return ociIndex.Manifests[0].Digest, nil
+}
+
+func (r *ImageReconciler) OCIImagePath(namespace string, function string) string {
+	return "/kontain/oci-images/" + namespace + "/" + function
+}
+
+func (r *ImageReconciler) OCIRuntimeBundlePath(namespace string, function string) string {
+	return "/kontain/oci-runtime-bundles/" + namespace + "/" + function
 }
