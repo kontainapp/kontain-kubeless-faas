@@ -32,6 +32,7 @@ type FaasCall struct {
 	RequestPath  string
 	ReplyPath    string
 	ConfigPath   string
+	StdErrOut    string
 }
 
 func runtimeBundlePath(namespace string, function string) string {
@@ -51,15 +52,13 @@ func FaasApiGetFunctionInstance(url string) *FaasCall {
 	namespace := comp[1]
 	function := comp[2]
 
-	path := runtimeBundlePath(namespace, function) + "/rootfs"
-	fmt.Printf("ApiValidate: path:%s\n", path)
+	path := runtimeBundlePath(namespace, function)
 	fi, err := os.Stat(path)
 	if err != nil || !fi.IsDir() {
 		return nil
 	}
 	id := uuid.NewString()
 	instancePath := runtimeInstancePath(namespace, function) + "/" + id
-	fmt.Printf("InstancePath=%s\n", instancePath)
 	ret := &FaasCall{
 		Namespace:    namespace,
 		Function:     function,
@@ -69,6 +68,7 @@ func FaasApiGetFunctionInstance(url string) *FaasCall {
 		ConfigPath:   instancePath + "/config.json",
 		RequestPath:  instancePath + "/request",
 		ReplyPath:    instancePath + "/reply",
+		StdErrOut:    instancePath + "/out+err",
 	}
 	err = os.MkdirAll(ret.InstancePath, 0755)
 	if err != nil {
@@ -83,41 +83,23 @@ func (f *FaasCall) HandlerExecCallFunction() error {
 	if err := f.CreateConfig(); err != nil {
 		return err
 	}
+
+	// Make sure reply file exists
+	{
+		file, err := os.Create(f.ReplyPath)
+		if err != nil {
+			return err
+		}
+		file.Close()
+	}
 	execCmd := exec.Command("/opt/kontain/bin/krun", "run", "--no-new-keyring", "--config="+f.ConfigPath,
-		"--bundle="+f.BundlePath, f.Id)
+		"--bundle="+f.BundlePath+"/rootfs", f.Id)
 	output, err := execCmd.CombinedOutput()
 	if err != nil {
 		fmt.Printf("Error: execCmd failed err=%v outut=%s\n", err, output)
 		return err
 	}
 	return nil
-	/*
-			functionImageDir := functionImageDirPathName()
-			functionBundleDir := functionBundleDirPathName(faasName)
-			// Get the runtime bundle for this function
-			err := getFunctionBundle(faasName, functionImageDir, functionBundleDir)
-			if err != nil {
-				return err
-			}
-
-		containerId := faasName + "-" + id
-		configPath := instanceConfigPathName(faasName, containerId)
-
-		rq := requestPathName(faasName, id)
-		rp := responsePathName(faasName, id)
-		err = createConfigJson(configPath, faasName, pathName, rq, rp)
-		if err != nil {
-			return err
-		}
-
-		execCmd := exec.Command("/opt/kontain/bin/krun", "run", "--no-new-keyring", "--config="+configPath, "--bundle="+functionBundleDir, containerId)
-		output, err := execCmd.CombinedOutput()
-		fmt.Printf("Output of %s:\n%s\n============\n", execCmd.String(), output)
-
-		// Cleanup
-		os.Remove(configPath)
-		return err
-	*/
 }
 
 type FunctionRequest struct {
@@ -251,26 +233,85 @@ func (f *FaasCall) HandlerCleanFiles() {
 	*/
 }
 
+// OCI Image Configurationa - blob, pointed to by OCIImageManifest.Config
+type OCIImageConfiguration struct {
+	Created      string             `json:"created,omitempty"`
+	Author       string             `json:"author,omitempty"`
+	Architecture string             `json:"architecture"`
+	Os           string             `json:"os"`
+	Config       OCIImageExecConfig `json:"config"`
+}
+
+//
+type OCIImageExecConfig struct {
+	User         string              `json:"User,omitempty"`
+	ExposedPorts map[string]struct{} `json:"ExposedPorts,omitempty"`
+	Env          []string            `json:"Env,omitempty"`
+	Entrypoint   []string            `json:"ENtrypoint,omitempty"`
+	Cmd          []string            `Entrypoint:"Cmd,omitempty"`
+	Volumes      map[string]struct{} `json:"Volumesexposedports,omitempty"`
+	WorkingDir   string              `json:"WorkingDir,omitempty"`
+	Labels       map[string]string   `jsoon:"Labels,omitempty"`
+	StopSignal   string              `json:"StopSignal,omitempty"`
+}
+
 func (f *FaasCall) CreateConfig() error {
-	defer timeTaken("createConfigJson")()
+	data, err := ioutil.ReadFile(f.BundlePath + "/oci-config.json")
+	if err != nil {
+		return err
+	}
+	var imageConfiguration OCIImageConfiguration
+	json.Unmarshal(data, &imageConfiguration)
+
+	cmd := ""
+	for _, c := range imageConfiguration.Config.Entrypoint {
+		if len(cmd) > 0 {
+			cmd = cmd + ", "
+		}
+		cmd = cmd + "\"" + c + "\""
+	}
+	for _, c := range imageConfiguration.Config.Cmd {
+		if len(cmd) > 0 {
+			cmd = cmd + ", "
+		}
+		cmd = cmd + "\"" + c + "\""
+	}
+
+	env := ""
+	for _, c := range imageConfiguration.Config.Env {
+		if len(env) > 0 {
+			env = env + ", "
+		}
+		env = env + "\"" + c + "\""
+	}
 
 	// Substitute the function and instance specific values into our config.json pattern string.
 	configJson := strings.ReplaceAll(configJsonTemplate, "$FAASINPUT$", f.RequestPath)
 	configJson = strings.ReplaceAll(configJson, "$FAASOUTPUT$", f.ReplyPath)
 	configJson = strings.ReplaceAll(configJson, "$FAASFUNC$", f.Function)
 	configJson = strings.ReplaceAll(configJson, "$FAASDATADIR$", f.InstancePath)
+	configJson = strings.ReplaceAll(configJson, "$FAASSTDERROUT$", f.StdErrOut)
+	configJson = strings.ReplaceAll(configJson, "$FAASBUNDLEPATH$", f.BundlePath+"/rootfs")
+	configJson = strings.ReplaceAll(configJson, "$FAASCMD$", cmd)
+	configJson = strings.ReplaceAll(configJson, "$FAASENV$", env)
 
-	err := ioutil.WriteFile(f.ConfigPath, []byte(configJson), 0444)
+	err = ioutil.WriteFile(f.ConfigPath, []byte(configJson), 0444)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
+/*
+ */
 const (
 	configJsonTemplate string = `
 {
     "ociVersion": "1.0.0",
+    "annotations": {
+        "run.oci.hooks.stdout": "$FAASSTDERROUT$",
+        "run.oci.hooks.stderr": "$FAASSTDERROUT$"
+	},
     "process": {
         "user": {
             "uid": 0,
@@ -280,23 +321,34 @@ const (
         "args": [
             "/opt/kontain/bin/km",
             "--input-data",
-            "$FAASINPUT$",
+            "/.request",
             "--output-data",
-            "$FAASOUTPUT$",
-            "/usr/bin/$FAASFUNC$.km"
+            "/.reply",
+            $FAASCMD$
         ],
         "env": [
-            "PATH=/usr/bin",
-            "TERM=xterm"
+            $FAASENV$
         ],
         "cwd": "/",
         "noNewPrivileges": true
     },
     "root": {
-        "path": "rootfs",
+        "path": "$FAASBUNDLEPATH$",
         "readonly": true
     },
     "mounts": [
+        {
+            "destination": "/.request",
+            "type": "none",
+            "source": "$FAASINPUT$",
+			"options": [ "bind" ]
+        },
+        {
+            "destination": "/.reply",
+            "type": "none",
+            "source": "$FAASOUTPUT$",
+            "options": [ "bind" ]
+        },
         {
             "destination": "/proc",
             "type": "proc"

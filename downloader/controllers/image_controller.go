@@ -22,6 +22,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -40,6 +41,14 @@ type ImageReconciler struct {
 
 // +kubebuilder:rbac:groups=build.kontain.app,resources=images,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=build.kontain.app,resources=images/status,verbs=get;update;patch
+
+func (r *ImageReconciler) OCIImagePath(namespace string, function string) string {
+	return "/kontain/oci-images/" + namespace + "/" + function
+}
+
+func (r *ImageReconciler) OCIRuntimeBundlePath(namespace string, function string) string {
+	return "/kontain/oci-runtime-bundles/" + namespace + "/" + function
+}
 
 func (r *ImageReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	ctx := context.Background()
@@ -122,11 +131,12 @@ func (r *ImageReconciler) CreateFunction(req ctrl.Request, image buildv1.Image) 
 		r.Log.Info("OCIDigest failed", "err", err)
 		return ctrl.Result{}, err
 	}
+	r.Log.Info("image manifest:", "digest", digest)
 
 	// TODO: unpack into someplace else and rename(2) when done. Provents server from seeing half built things
-	functionImageDir := "/kontain/oci-runtime-bundles/" + req.NamespacedName.Namespace + "/" + req.NamespacedName.Name + "/rootfs"
+	functionImageDir := "/kontain/oci-runtime-bundles/" + req.NamespacedName.Namespace + "/" + req.NamespacedName.Name
 	// Make a directory for the runtime bundle.
-	err = os.MkdirAll(functionImageDir, 0755)
+	err = os.MkdirAll(functionImageDir+"/rootfs", 0755)
 	if err != nil {
 		r.Log.Info("MkdirAll failed", "err", err)
 		return ctrl.Result{}, err
@@ -136,12 +146,18 @@ func (r *ImageReconciler) CreateFunction(req ctrl.Request, image buildv1.Image) 
 
 		// build the runtime bundle using oci-image-tool
 		execCmd := exec.Command("/usr/bin/oci-image-tool", "unpack",
-			"--ref", "digest="+digest, ociImageDir, functionImageDir)
+			"--ref", "digest="+digest, ociImageDir, functionImageDir+"/rootfs")
 		output, err := execCmd.CombinedOutput()
 		if err != nil {
 			r.Log.Info("execCmd failed (oct-image-tool)", "err", err, "output", output)
 			return ctrl.Result{}, err
 		}
+	}
+
+	err = r.OCIConfigCopy(ociImageDir, digest, functionImageDir)
+	if err != nil {
+		r.Log.Info("OCIConfigCopy failed", "err", err)
+		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
@@ -162,16 +178,63 @@ func (r *ImageReconciler) DeleteFunction(req ctrl.Request) (ctrl.Result, error) 
 	return ctrl.Result{}, nil
 }
 
+/*
+ * These types are used to decode the metadata for an OCI Image Layout, starting with index.json
+ * OCI Image decode. See https://github.com/opencontainers/image-spec/blob/master/spec.md
+ */
+
+// OCI index.json
+type OCIIndex struct {
+	SchemaVersion int                `json:"schemaVersion"`
+	Manifests     []OCIIndexManifest `json:"manifests"`
+	Annotations   map[string]string  `json:"annotations,omitempty"`
+}
+type OCIIndexManifest struct {
+	MediaType string `json:"mediaType"`
+	Digest    string `json:"digest"`
+	Size      int    `json:"size"`
+}
+
+// OCI image manifest - blob, referenced by index.json
+type OCIImageManifest struct {
+	SchemaVersion int                  `json:"schemaVersion"`
+	Config        OCIImageDescriptor   `json:"config"`
+	Layers        []OCIImageDescriptor `json:"layer"`
+	Annotations   map[string]string    `json:"annotations,omitempty"`
+}
+
+// OCI Content Descriptor for items in OCIImageManifest
+type OCIImageDescriptor struct {
+	MediaType   string            `json:"mediaType"`
+	Digest      string            `json:"digest"`
+	Size        int               `json:"size"`
+	Urls        int               `json:"urls,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty"`
+}
+
+// OCI Image Configurationa - blob, pointed to by OCIImageManifest.Config
+type OCIImageConfiguration struct {
+	Created      string             `json:"created,omitempty"`
+	Author       string             `json:"author,omitempty"`
+	Architecture string             `json:"architecture"`
+	Os           string             `json:"os"`
+	Config       OCIImageExecConfig `json:"config"`
+}
+
+//
+type OCIImageExecConfig struct {
+	User         string              `json:"User,omitempty"`
+	ExposedPorts map[string]struct{} `json:"ExposedPorts,omitempty"`
+	Env          []string            `json:"Env,omitempty"`
+	Entrypoint   []string            `json:"ENtrypoint,omitempty"`
+	Cmd          []string            `Entrypoint:"Cmd,omitempty"`
+	Volumes      map[string]struct{} `json:"Volumesexposedports,omitempty"`
+	WorkingDir   string              `json:"WorkingDir,omitempty"`
+	Labels       map[string]string   `jsoon:"Labels,omitempty"`
+	StopSignal   string              `json:"StopSignal,omitempty"`
+}
+
 func (r *ImageReconciler) OCIDigest(downloadDir string) (string, error) {
-	type OCIManifest struct {
-		MediaType string `json:"mediaType"`
-		Digest    string `json:"digest"`
-		Size      int    `json:"size"`
-	}
-	type OCIIndex struct {
-		SchemaVersion int           `json:"schemaVersion"`
-		Manifests     []OCIManifest `json:"manifests"`
-	}
 
 	data, err := ioutil.ReadFile(downloadDir + "/index.json")
 	if err != nil {
@@ -185,10 +248,24 @@ func (r *ImageReconciler) OCIDigest(downloadDir string) (string, error) {
 	return ociIndex.Manifests[0].Digest, nil
 }
 
-func (r *ImageReconciler) OCIImagePath(namespace string, function string) string {
-	return "/kontain/oci-images/" + namespace + "/" + function
-}
+func (r *ImageReconciler) OCIConfigCopy(downloadDir string, digest string, imageDir string) error {
+	digest_arr := strings.Split(digest, ":")
+	data, err := ioutil.ReadFile(downloadDir + "/blobs/" + digest_arr[0] + "/" + digest_arr[1])
+	if err != nil {
+		r.Log.Info("Readfile failed", "file", downloadDir+"/index.json", "err", err)
+		return err
+	}
 
-func (r *ImageReconciler) OCIRuntimeBundlePath(namespace string, function string) string {
-	return "/kontain/oci-runtime-bundles/" + namespace + "/" + function
+	var ociManifest OCIImageManifest
+	json.Unmarshal(data, &ociManifest)
+	r.Log.Info("config", "desc", ociManifest.Config)
+
+	digest_arr = strings.Split(ociManifest.Config.Digest, ":")
+	data, err = ioutil.ReadFile(downloadDir + "/blobs/" + digest_arr[0] + "/" + digest_arr[1])
+	if err != nil {
+		r.Log.Info("Readfile failed", "file", downloadDir+"/index.json", "err", err)
+		return err
+	}
+	err = ioutil.WriteFile(imageDir+"/oci-config.json", data, 0444)
+	return err
 }
