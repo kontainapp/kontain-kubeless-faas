@@ -1,3 +1,19 @@
+# Kontain FAAS
+
+Kontain FAAS is a Proof of Concept for a Kubernetes based FAAS platform that leverages the Kontain 
+Unikernel/Virtual Machine technology. Like other FAAS platforms, each user function are encapsulated in 
+a dedicated OCI image. When a function is called the function's OCI-image is instantiated in a Kontainer
+and the function Kontainer is called. This Kontainer only lives for the time it takes to service
+that single function call.
+
+The central component of Kontain FAAS is  a kubernetes `Deployment` called`kontain-faas-server`.
+Each deployed `kontain-faas-server` pod contains:
+
+* A file system for that contains directories for the OCI-images and OCI-bundles of the user functions to be run.
+* A container running the `faas-server`, which handles calls to user functions.
+- A container running the `faas-downloader` which monitors for changes to Image CRD records.
+
+
 # Kubless faas
 
 Repository for shared Faas work within Kontain based on Kubeless. The real code is in submodules. Do not forget to `git submodule update --init` after cloning.
