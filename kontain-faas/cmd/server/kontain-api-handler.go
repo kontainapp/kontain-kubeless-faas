@@ -319,7 +319,11 @@ const (
         },
         "terminal": false,
         "args": [
-            "/opt/kontain/bin/km",
+			"/opt/kontain/bin/km",
+			"--coredump",
+			"/kontain/kmcore",
+			"--snapshot",
+			"/kontain/kmsnap",
             "--input-data",
             "/.request",
             "--output-data",

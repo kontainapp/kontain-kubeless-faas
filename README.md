@@ -13,19 +13,27 @@ Each deployed `kontain-faas-server` pod contains:
 * A container running the `faas-server`, which handles calls to user functions.
 - A container running the `faas-downloader` which monitors for changes to Image CRD records.
 
+The `faas-server` container executes a GO-based HTTP server that starts user function containers
+based on the URL path names. The path names are formatted `<namespace>/<function_name>`. Each invocation executes KRUN to run the user container.
 
-# Kubless faas
+The `faas-downloader` container executes a GO based CRD controller that listens for changes in resources of CRD type
+`build.kontain.app/v1/Image`. Each function `build.kontain.app/v1/Image` resource represents a user-defined function.
+The CRD maps the `<namespace>/<function_name>` URL path to a container. When the `faas-downloader` container sees a new
+function, it downloads the function from a container registry to local storage.
 
-Repository for shared Faas work within Kontain based on Kubeless. The real code is in submodules. Do not forget to `git submodule update --init` after cloning.
+`kubebuilder` generated the skelton for `faas-downloader`.
 
-Submodules: 
+## Building
 
-- kubeless : core kubeless engine
-- runtimes : runtime containers
-- http-trigger : triggers involving 
-- cronjob-trigger
+From the root of the git tree:
 
-# Overview of Vanilla Kubeless
+* `make -C kontain-faas/cmd/server/` builds the `faas-server` containter which is tagged `kontain-faas-server:latest`.
+* `make -C downloader/  docker-build` builds the `faas-downloader` container which is tagged `faas-downloader:latest`.
+
+## Running in Minikube
+
+
+# Background - Overview of Vanilla Kubeless
 
 Kubeless is Kubernetes native in the sense that all Kubeless functionality is wrapped in containers and those
 containers are deployed using native Kubernetes primitives. The major container types used by kubeless are:
