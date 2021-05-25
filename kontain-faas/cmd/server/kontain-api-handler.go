@@ -11,239 +11,447 @@
 package main
 
 import (
-	"bufio"
 	"encoding/base64"
-	"errors"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
-	"sync/atomic"
+
+	"github.com/google/uuid"
 )
 
-type KontainApi struct {
-	SerialId uint64
+type FaasCall struct {
+	Namespace    string
+	Function     string
+	Id           string
+	BundlePath   string
+	InstancePath string
+	RequestPath  string
+	ReplyPath    string
+	ConfigPath   string
+	StdErrOut    string
 }
 
-var kontainApi KontainApi
-
-func init() {
-	kontainApi.SerialId = 1
+func runtimeBundlePath(namespace string, function string) string {
+	return "/kontain/oci-runtime-bundles/" + namespace + "/" + function
 }
 
-func getNextSerialId() string {
-	id := atomic.AddUint64(&kontainApi.SerialId, 1)
-	return fmt.Sprintf("%016x", id)
+func runtimeInstancePath(namespace string, function string) string {
+	return "/kontain/runtime-instances/" + namespace + "/" + function
 }
 
-const (
-	pathName                  string = "/kontain"
-	containerBaseDir          string = "run_faas_here"
-	functionContainerImageDir string = "function_container_images"
-)
+func FaasApiGetFunctionInstance(url string) *FaasCall {
 
-func requestFileName(faasName string, id string) string {
-	return faasName + "-" + id + ".request"
-}
-func requestPathName(faasName string, id string) string {
-	return pathName + "/" + requestFileName(faasName, id)
-}
-func responseFileName(faasName string, id string) string {
-	return faasName + "-" + id + ".response"
-}
-func responsePathName(faasName string, id string) string {
-	return pathName + "/" + responseFileName(faasName, id)
-}
-
-func containerBaseDirPathName() string {
-	return pathName + "/" + containerBaseDir + "/"
-}
-
-func functionImageDirPathName() string {
-	return pathName + "/" + containerBaseDir + "/" + functionContainerImageDir + "/"
-}
-
-func functionBundleDirPathName(faasName string) string {
-	return pathName + "/" + containerBaseDir + "/" + faasName + "/"
-}
-
-func instanceConfigPathName(faasName string, containerId string) string {
-	return pathName + "/" + containerBaseDir + "/" + faasName + "/" + "config-" + containerId + ".json"
-}
-
-func GetCallFunction(url string) (string, error) {
 	comp := strings.Split(url, "/")
-	if len(comp) == 0 {
-		return "", errors.New("Invalid URL")
+	if len(comp) < 3 {
+		return nil
 	}
-	return comp[1], nil
+	namespace := comp[1]
+	function := comp[2]
+
+	path := runtimeBundlePath(namespace, function)
+	fi, err := os.Stat(path)
+	if err != nil || !fi.IsDir() {
+		return nil
+	}
+	id := uuid.NewString()
+	instancePath := runtimeInstancePath(namespace, function) + "/" + id
+	ret := &FaasCall{
+		Namespace:    namespace,
+		Function:     function,
+		Id:           id,
+		BundlePath:   path,
+		InstancePath: instancePath,
+		ConfigPath:   instancePath + "/config.json",
+		RequestPath:  instancePath + "/request",
+		ReplyPath:    instancePath + "/reply",
+		StdErrOut:    instancePath + "/out+err",
+	}
+	err = os.MkdirAll(ret.InstancePath, 0755)
+	if err != nil {
+		return nil
+	}
+
+	return ret
 }
 
-func ApiHandlerExecCallFunction(faasName string, id string) error {
+func (f *FaasCall) HandlerExecCallFunction() error {
 
-	functionImageDir := functionImageDirPathName()
-	functionBundleDir := functionBundleDirPathName(faasName)
-	// Get the runtime bundle for this function
-	err := getFunctionBundle(faasName, functionImageDir, functionBundleDir)
-	if err != nil {
+	if err := f.CreateConfig(); err != nil {
 		return err
 	}
 
-	containerId := faasName + "-" + id
-	configPath := instanceConfigPathName(faasName, containerId)
-
-	rq := requestPathName(faasName, id)
-	rp := responsePathName(faasName, id)
-	err = createConfigJson(configPath, faasName, pathName, rq, rp)
-	if err != nil {
-		return err
-	}
-
-	execCmd := exec.Command("/opt/kontain/bin/krun", "run", "--no-new-keyring", "--config="+configPath, "--bundle="+functionBundleDir, containerId)
-	output, err := execCmd.CombinedOutput()
-	fmt.Printf("Output of %s:\n%s\n============\n", execCmd.String(), output)
-
-	// Cleanup
-	os.Remove(configPath)
-	return err
-}
-
-func ApiHandlerWriteRequest(faasName string, method string, url string, id string, header http.Header, data string) error {
-	fn := requestPathName(faasName, id)
-	fd, err := os.OpenFile(fn, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0777)
-	if err != nil {
-		return err
-	}
-	defer fd.Close()
-	fmt.Fprintf(fd, "METHOD: %s\n", method)
-	fmt.Fprintf(fd, "URL: %s\n", base64.StdEncoding.EncodeToString([]byte(url)))
-
-	for k, v := range header {
-		fmt.Fprintf(fd, "HEADER: %s",
-			base64.StdEncoding.EncodeToString([]byte(k)))
-		for _, j := range v {
-			fmt.Fprintf(fd, " ,%s",
-				base64.StdEncoding.EncodeToString([]byte(j)))
+	// Make sure reply file exists
+	{
+		file, err := os.Create(f.ReplyPath)
+		if err != nil {
+			return err
 		}
-		fmt.Fprintf(fd, "\n")
+		file.Close()
+	}
+	execCmd := exec.Command("/opt/kontain/bin/krun", "run", "--no-new-keyring", "--config="+f.ConfigPath,
+		"--bundle="+f.BundlePath+"/rootfs", f.Id)
+	output, err := execCmd.CombinedOutput()
+	if err != nil {
+		fmt.Printf("Error: execCmd failed err=%v outut=%s\n", err, output)
+		return err
+	}
+	return nil
+}
+
+type FunctionRequest struct {
+	Method  string
+	Url     string
+	Headers map[string][]string
+	Data    string
+}
+
+type FunctionReply struct {
+	Status int
+	Data   []byte
+}
+
+func (f *FaasCall) HandlerWriteRequest(method string, url string, header http.Header, data string) error {
+	req, err := json.Marshal(&FunctionRequest{
+		Method: method,
+		Url:    url,
+		Data:   base64.StdEncoding.EncodeToString([]byte(data)),
+	})
+	if err != nil {
+		return err
 	}
 
-	fmt.Fprintf(fd, "DATA: %s\n", base64.StdEncoding.EncodeToString([]byte(data)))
+	err = ioutil.WriteFile(f.RequestPath, req, 0444)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
 
-func ApiHandlerReadRequest(faasName string, id string) (string, string, []byte, error) {
+func (f *FaasCall) HandlerReadRequest() (string, string, []byte, error) {
 	var method string
 	var url string
 	var decData []byte
-	header := make(map[string][]string)
+	return method, url, decData, nil
+	/*
+		header := make(map[string][]string)
 
-	fn := requestPathName(faasName, id)
-	fd, err := os.OpenFile(fn, os.O_RDWR|os.O_CREATE, 0777)
-	if err != nil {
-		return method, url, decData, err
-	}
-	defer fd.Close()
-
-	sc := bufio.NewScanner(fd)
-	for sc.Scan() {
-		comp := strings.Split(sc.Text(), ":")
-		if len(comp) != 2 {
-			return method, url, decData, errors.New("Corrupted input")
+		fn := requestPathName(faasName, id)
+		fd, err := os.OpenFile(fn, os.O_RDWR|os.O_CREATE, 0777)
+		if err != nil {
+			return method, url, decData, err
 		}
-		comp1 := strings.TrimSpace(comp[0])
-		comp2 := strings.TrimSpace(comp[1])
-		switch comp1 {
-		case "METHOD":
-			method = comp2
-		case "URL":
-			urlByte, err := base64.StdEncoding.DecodeString(comp2)
-			if err != nil {
-				return method, url, decData, err
+		defer fd.Close()
+
+		sc := bufio.NewScanner(fd)
+		for sc.Scan() {
+			comp := strings.Split(sc.Text(), ":")
+			if len(comp) != 2 {
+				return method, url, decData, errors.New("Corrupted input")
 			}
-			url = string(urlByte)
-		case "HEADER":
-			hcomp := strings.Split(comp2, ",")
-			if len(hcomp) != 2 {
-				return method, url, decData, errors.New("Corrupted input in HEADER")
-			}
-			var k string
-			var v []string
-			for i, j := range hcomp {
-				jDec, err := base64.StdEncoding.DecodeString(strings.TrimSpace(j))
+			comp1 := strings.TrimSpace(comp[0])
+			comp2 := strings.TrimSpace(comp[1])
+			switch comp1 {
+			case "METHOD":
+				method = comp2
+			case "URL":
+				urlByte, err := base64.StdEncoding.DecodeString(comp2)
 				if err != nil {
 					return method, url, decData, err
 				}
-				if i == 0 {
-					k = string(jDec)
-				} else {
-					v = append(v, string(jDec))
+				url = string(urlByte)
+			case "HEADER":
+				hcomp := strings.Split(comp2, ",")
+				if len(hcomp) != 2 {
+					return method, url, decData, errors.New("Corrupted input in HEADER")
+				}
+				var k string
+				var v []string
+				for i, j := range hcomp {
+					jDec, err := base64.StdEncoding.DecodeString(strings.TrimSpace(j))
+					if err != nil {
+						return method, url, decData, err
+					}
+					if i == 0 {
+						k = string(jDec)
+					} else {
+						v = append(v, string(jDec))
+					}
+				}
+				header[k] = v
+			case "DATA":
+				decData, err = base64.StdEncoding.DecodeString(comp2)
+				if err != nil {
+					return method, url, decData, err
 				}
 			}
-			header[k] = v
-		case "DATA":
-			decData, err = base64.StdEncoding.DecodeString(comp2)
-			if err != nil {
-				return method, url, decData, err
-			}
 		}
-	}
-	return method, url, decData, nil
+		return method, url, decData, nil
+	*/
 }
 
 func ApiHandlerWriteResponse(faasName string, id string, statusCode int, data []byte) error {
-	fn := responsePathName(faasName, id)
-	fd, err := os.OpenFile(fn, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0777)
-	if err != nil {
-		return err
-	}
-	defer fd.Close()
+	/*
+		fn := responsePathName(faasName, id)
+		fd, err := os.OpenFile(fn, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0777)
+		if err != nil {
+			return err
+		}
+		defer fd.Close()
 
-	fmt.Fprintf(fd, "STATUSCODE: %d\n", statusCode)
-	fmt.Fprintf(fd, "DATA: %s\n", base64.StdEncoding.EncodeToString(data))
+		fmt.Fprintf(fd, "STATUSCODE: %d\n", statusCode)
+		fmt.Fprintf(fd, "DATA: %s\n", base64.StdEncoding.EncodeToString(data))
+	*/
 
 	return nil
 }
 
-func ApiHandlerReadResponse(faasName string, id string) (int, []byte, error) {
-	code := http.StatusNotFound
-	decData := []byte("")
+func (f *FaasCall) HandlerReadResponse() (int, []byte, error) {
 
-	fn := responsePathName(faasName, id)
-	fd, err := os.OpenFile(fn, os.O_RDONLY, 0)
+	data, err := ioutil.ReadFile(f.ReplyPath)
 	if err != nil {
-		return code, decData, err
+		return http.StatusNotFound, data, err
 	}
-	defer fd.Close()
 
-	sc := bufio.NewScanner(fd)
-	for sc.Scan() {
-		comp := strings.Split(sc.Text(), ":")
-		comp1 := strings.TrimSpace(comp[0])
-		comp2 := strings.TrimSpace(comp[1])
-		switch comp1 {
-		case "STATUSCODE":
-			code, err = strconv.Atoi(strings.TrimSpace(comp2))
-			if err != nil {
-				return code, decData, err
-			}
-		case "DATA":
-			decData, err = base64.StdEncoding.DecodeString(comp2)
-			if err != nil {
-				return code, decData, err
-			}
+	reply := FunctionReply{}
+	err = json.Unmarshal([]byte(data), &reply)
+	if err != nil {
+		return http.StatusNotFound, data, err
+	}
+	return reply.Status, reply.Data, nil
+}
+
+func (f *FaasCall) HandlerCleanFiles() {
+	/*
+		if err := os.RemoveAll(f.InstancePath); err != nil {
+			// TODO: bark
 		}
+	*/
+}
+
+// OCI Image Configurationa - blob, pointed to by OCIImageManifest.Config
+type OCIImageConfiguration struct {
+	Created      string             `json:"created,omitempty"`
+	Author       string             `json:"author,omitempty"`
+	Architecture string             `json:"architecture"`
+	Os           string             `json:"os"`
+	Config       OCIImageExecConfig `json:"config"`
+}
+
+//
+type OCIImageExecConfig struct {
+	User         string              `json:"User,omitempty"`
+	ExposedPorts map[string]struct{} `json:"ExposedPorts,omitempty"`
+	Env          []string            `json:"Env,omitempty"`
+	Entrypoint   []string            `json:"ENtrypoint,omitempty"`
+	Cmd          []string            `Entrypoint:"Cmd,omitempty"`
+	Volumes      map[string]struct{} `json:"Volumesexposedports,omitempty"`
+	WorkingDir   string              `json:"WorkingDir,omitempty"`
+	Labels       map[string]string   `jsoon:"Labels,omitempty"`
+	StopSignal   string              `json:"StopSignal,omitempty"`
+}
+
+func (f *FaasCall) CreateConfig() error {
+	data, err := ioutil.ReadFile(f.BundlePath + "/oci-config.json")
+	if err != nil {
+		return err
+	}
+	var imageConfiguration OCIImageConfiguration
+	json.Unmarshal(data, &imageConfiguration)
+
+	cmd := ""
+	for _, c := range imageConfiguration.Config.Entrypoint {
+		if len(cmd) > 0 {
+			cmd = cmd + ", "
+		}
+		cmd = cmd + "\"" + c + "\""
+	}
+	for _, c := range imageConfiguration.Config.Cmd {
+		if len(cmd) > 0 {
+			cmd = cmd + ", "
+		}
+		cmd = cmd + "\"" + c + "\""
 	}
 
-	return code, decData, nil
+	env := ""
+	for _, c := range imageConfiguration.Config.Env {
+		if len(env) > 0 {
+			env = env + ", "
+		}
+		env = env + "\"" + c + "\""
+	}
+
+	// Substitute the function and instance specific values into our config.json pattern string.
+	configJson := strings.ReplaceAll(configJsonTemplate, "$FAASINPUT$", f.RequestPath)
+	configJson = strings.ReplaceAll(configJson, "$FAASOUTPUT$", f.ReplyPath)
+	configJson = strings.ReplaceAll(configJson, "$FAASFUNC$", f.Function)
+	configJson = strings.ReplaceAll(configJson, "$FAASDATADIR$", f.InstancePath)
+	configJson = strings.ReplaceAll(configJson, "$FAASSTDERROUT$", f.StdErrOut)
+	configJson = strings.ReplaceAll(configJson, "$FAASBUNDLEPATH$", f.BundlePath+"/rootfs")
+	configJson = strings.ReplaceAll(configJson, "$FAASCMD$", cmd)
+	configJson = strings.ReplaceAll(configJson, "$FAASENV$", env)
+
+	err = ioutil.WriteFile(f.ConfigPath, []byte(configJson), 0444)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
-func ApiHandlerCleanFiles(faasName string, id string) {
-	reqFn := requestPathName(faasName, id)
-	os.Remove(reqFn)
-	resFn := responsePathName(faasName, id)
-	os.Remove(resFn)
+/*
+ */
+const (
+	configJsonTemplate string = `
+{
+    "ociVersion": "1.0.0",
+    "annotations": {
+        "run.oci.hooks.stdout": "$FAASSTDERROUT$",
+        "run.oci.hooks.stderr": "$FAASSTDERROUT$"
+	},
+    "process": {
+        "user": {
+            "uid": 0,
+            "gid": 0
+        },
+        "terminal": false,
+        "args": [
+			"/opt/kontain/bin/km",
+			"--coredump",
+			"/kontain/kmcore",
+			"--snapshot",
+			"/kontain/kmsnap",
+            "--input-data",
+            "/.request",
+            "--output-data",
+            "/.reply",
+            $FAASCMD$
+        ],
+        "env": [
+            $FAASENV$
+        ],
+        "cwd": "/",
+        "noNewPrivileges": true
+    },
+    "root": {
+        "path": "$FAASBUNDLEPATH$",
+        "readonly": true
+    },
+    "mounts": [
+        {
+            "destination": "/.request",
+            "type": "none",
+            "source": "$FAASINPUT$",
+			"options": [ "bind" ]
+        },
+        {
+            "destination": "/.reply",
+            "type": "none",
+            "source": "$FAASOUTPUT$",
+            "options": [ "bind" ]
+        },
+        {
+            "destination": "/proc",
+            "type": "proc"
+        },
+        {
+            "destination": "/sys",
+            "type": "sysfs",
+            "source": "sysfs",
+            "options": [
+                "nosuid",
+                "noexec",
+                "nodev",
+                "ro"
+            ]
+        },
+        {
+            "destination": "/sys/fs/cgroup",
+            "type": "cgroup",
+            "source": "cgroup",
+            "options": [
+                "nosuid",
+                "noexec",
+                "nodev",
+                "relatime",
+                "rw"
+            ]
+        },
+        {
+            "destination": "/dev",
+            "type": "tmpfs",
+            "source": "tmpfs",
+            "options": [
+                "nosuid",
+                "strictatime",
+                "mode=755",
+                "size=65536k"
+            ]
+        },
+        {
+            "destination": "/dev/pts",
+            "type": "devpts",
+            "source": "devpts",
+            "options": [
+                "nosuid",
+                "noexec",
+                "newinstance",
+                "ptmxmode=0666",
+                "mode=0620"
+            ]
+        },
+        {
+            "destination": "/dev/shm",
+            "type": "tmpfs",
+            "source": "shm",
+            "options": [
+                "nosuid",
+                "noexec",
+                "nodev",
+                "mode=1777",
+                "size=65536k"
+            ]
+        },
+        {
+            "destination": "/dev/mqueue",
+            "type": "mqueue",
+            "source": "mqueue",
+            "options": [
+                "nosuid",
+                "noexec",
+                "nodev"
+            ]
+        },
+        {
+            "destination": "/kontain",
+            "type": "none",
+            "source": "$FAASDATADIR$",
+            "options": ["bind", "rw"]
+        }
+    ],
+    "linux": {
+        "rootfsPropagation": "rprivate",
+        "namespaces": [
+            {
+                "type": "mount"
+            },
+            {
+                "type": "pid"
+            },
+            {
+                "type": "user"
+            },
+            {
+                "type": "ipc"
+            },
+            {
+                "type": "cgroup"
+            }
+        ]
+    }
 }
+`
+)

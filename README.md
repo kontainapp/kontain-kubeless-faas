@@ -1,15 +1,39 @@
-# Kubless faas
+# Kontain FAAS
 
-Repository for shared Faas work within Kontain based on Kubeless. The real code is in submodules. Do not forget to `git submodule update --init` after cloning.
+Kontain FAAS is a Proof of Concept for a Kubernetes based FAAS platform that leverages the Kontain 
+Unikernel/Virtual Machine technology. Like other FAAS platforms, each user function are encapsulated in 
+a dedicated OCI image. When a function is called the function's OCI-image is instantiated in a Kontainer
+and the function Kontainer is called. This Kontainer only lives for the time it takes to service
+that single function call.
 
-Submodules: 
+The central component of Kontain FAAS is  a kubernetes `Deployment` called`kontain-faas-server`.
+Each deployed `kontain-faas-server` pod contains:
 
-- kubeless : core kubeless engine
-- runtimes : runtime containers
-- http-trigger : triggers involving 
-- cronjob-trigger
+* A file system for that contains directories for the OCI-images and OCI-bundles of the user functions to be run.
+* A container running the `faas-server`, which handles calls to user functions.
+- A container running the `faas-downloader` which monitors for changes to Image CRD records.
 
-# Overview of Vanilla Kubeless
+The `faas-server` container executes a GO-based HTTP server that starts user function containers
+based on the URL path names. The path names are formatted `<namespace>/<function_name>`. Each invocation executes KRUN to run the user container.
+
+The `faas-downloader` container executes a GO based CRD controller that listens for changes in resources of CRD type
+`build.kontain.app/v1/Image`. Each function `build.kontain.app/v1/Image` resource represents a user-defined function.
+The CRD maps the `<namespace>/<function_name>` URL path to a container. When the `faas-downloader` container sees a new
+function, it downloads the function from a container registry to local storage.
+
+`kubebuilder` generated the skelton for `faas-downloader`.
+
+## Building
+
+From the root of the git tree:
+
+* `make -C kontain-faas/cmd/server/` builds the `faas-server` containter which is tagged `kontain-faas-server:latest`.
+* `make -C downloader/  docker-build` builds the `faas-downloader` container which is tagged `faas-downloader:latest`.
+
+## Running in Minikube
+
+
+# Background - Overview of Vanilla Kubeless
 
 Kubeless is Kubernetes native in the sense that all Kubeless functionality is wrapped in containers and those
 containers are deployed using native Kubernetes primitives. The major container types used by kubeless are:

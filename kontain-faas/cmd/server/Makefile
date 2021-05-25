@@ -30,25 +30,10 @@ minikubecerts:
 	cp $(DOCKER_CERT_PATH)/* tmp-bld/minikubecerts
 
 # Build the faas server
-kontain-faas-server: kontain-api-handler.go kontain-faas.go kontain-function-root.go
+kontain-faas-server: kontain-api-handler.go kontain-faas.go
 	GOOS=linux GOARCH=amd64 go build -o kontain-faas-server .
 
-# Build the container image unpack tool for the faas server to use
-oci-image-tool:
-	# Verify that GOPATH env var is set
-	@if [ "$(GOPATH)" == "" ]; \
-	then \
-		echo "GOPATH must be in the environment"; \
-		exit 1; \
-	fi
-	rm -f go.mod go.sum
-	# TODO: Should have a specific version. Can't do in GOPATH mode.
-	# TODO: learn more about go module system and fix this.
-	go get -d github.com/opencontainers/image-tools/cmd/oci-image-tool
-	make -C $(GOPATH)/src/github.com/opencontainers/image-tools  tool
-	cp $(GOPATH)/src/github.com/opencontainers/image-tools/oci-image-tool tmp-bld
-
-faas-server-container:	test-func-images oci-image-tool minikubecerts kontain-faas-server
+faas-server-container:	test-func-images minikubecerts kontain-faas-server
 	@if [ "$(DOCKER_HOST)" == "" ]; \
 	then \
 		echo "DOCKER_HOST must be in the environment"; \

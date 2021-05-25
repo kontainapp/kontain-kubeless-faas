@@ -26,6 +26,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -57,27 +58,26 @@ func health(w http.ResponseWriter, r *http.Request) {
 
 func processRequest(event *functions.Event) (int, []byte, error) {
 
-	id := getNextSerialId()
-
 	urlString := event.Extensions.Request.URL.String()
-	faasName, err := GetCallFunction(urlString)
-	if err != nil {
-		return http.StatusNotFound, []byte(""), err
+	faasApi := FaasApiGetFunctionInstance(urlString)
+	if faasApi == nil {
+		fmt.Printf("-- Function not found %s\n", urlString)
+		return http.StatusNotFound, []byte(""), nil
 	}
+	defer faasApi.HandlerCleanFiles()
+	fmt.Printf("++ Function found %s/%s\n", faasApi.Namespace, faasApi.Function)
 
-	err = ApiHandlerWriteRequest(faasName, event.Extensions.Request.Method, urlString, id, event.Extensions.Request.Header, event.Data)
-	if err != nil {
-		return http.StatusInternalServerError, []byte(""), err
-	}
-
-	err = ApiHandlerExecCallFunction(faasName, id)
+	err := faasApi.HandlerWriteRequest(event.Extensions.Request.Method, urlString, event.Extensions.Request.Header, event.Data)
 	if err != nil {
 		return http.StatusInternalServerError, []byte(""), err
 	}
 
-	code, res, err := ApiHandlerReadResponse(faasName, id)
+	err = faasApi.HandlerExecCallFunction()
+	if err != nil {
+		return http.StatusInternalServerError, []byte(""), err
+	}
 
-	ApiHandlerCleanFiles(faasName, id)
+	code, res, err := faasApi.HandlerReadResponse()
 
 	return code, res, err
 }
