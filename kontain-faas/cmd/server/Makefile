@@ -20,14 +20,14 @@ km-tar:
 # certificates that the faas server will need to access the function container repository
 # This is minikube specific.  Not sure what to do for plain old kubeless
 minikubecerts:
-	@if [ "$(DOCKER_CERT_PATH)" = "" ] ;\
+	@if [ "${DOCKER_CERT_PATH}" = "" ] ;\
 	then \
 		echo "DOCKER_CERT_PATH must be in the environment" ; \
 		echo 'Run "eval $$(minikube docker-env)" to have it defined' ; \
 		exit 1; \
 	fi
 	mkdir -p tmp-bld/minikubecerts
-	cp $(DOCKER_CERT_PATH)/* tmp-bld/minikubecerts
+	cp ${DOCKER_CERT_PATH}/* tmp-bld/minikubecerts
 
 # Build the faas server
 kontain-faas-server: kontain-api-handler.go kontain-faas.go
